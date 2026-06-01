@@ -1,5 +1,6 @@
 const STORAGE_KEY = "marugotoMatching.v1";
 const KAMIYAMA_DOMAIN = "@kamiyama.ac.jp";
+const DEMO_PROFILE_IDS = ["u1", "u2", "u3", "u4"];
 
 const gradeOptions = ["1年生", "2年生", "3年生", "4年生", "5年生", "その他"];
 const spOptions = [
@@ -19,102 +20,10 @@ const spOptions = [
 
 const seedState = {
   session: null,
-  profiles: [
-    {
-      id: "u1",
-      email: "aoi@kamiyama.ac.jp",
-      photo: "https://images.unsplash.com/photo-1494790108377-be9c29b29330?auto=format&fit=crop&w=240&q=80",
-      nickname: "あおい",
-      grade: "2年生",
-      hometown: "徳島県神山町",
-      hobbies: ["#音楽", "#写真", "#散歩"],
-      interests: ["#起業", "#教育", "#デザイン"],
-      project: "町の空き家を使った学び場づくり #地域 #教育",
-      sp: "Sansan",
-      effort: "地域の人にインタビューして、学びの場の設計を進めています。",
-      message: "放課後にゆっくり話せる人を探しています。",
-      mbti: "ENFP",
-      sns: "@aoi_marugoto",
-    },
-    {
-      id: "u2",
-      email: "ren@kamiyama.ac.jp",
-      photo: "https://images.unsplash.com/photo-1500648767791-00dcc994a43e?auto=format&fit=crop&w=240&q=80",
-      nickname: "れん",
-      grade: "3年生",
-      hometown: "大阪府",
-      hobbies: ["#化学", "#登山", "#料理"],
-      interests: ["#環境", "#有機化学", "#ものづくり"],
-      project: "神山の水質を調べる化学実験プロジェクト #化学 #環境",
-      sp: "ソニー",
-      effort: "センサーで水質を可視化するプロトタイプを作っています。",
-      message: "化学や自然観察が好きな人と話したいです。",
-      mbti: "INTP",
-      sns: "",
-    },
-    {
-      id: "u3",
-      email: "hina@kamiyama.ac.jp",
-      photo: "https://images.unsplash.com/photo-1508214751196-bcfd4ca60f91?auto=format&fit=crop&w=240&q=80",
-      nickname: "ひな",
-      grade: "1年生",
-      hometown: "福岡県",
-      hobbies: ["#イラスト", "#音楽", "#読書"],
-      interests: ["#UI", "#ゲーム", "#心理学"],
-      project: "校内イベントの案内アプリ #UI #イベント",
-      sp: "MIXI",
-      effort: "Figmaで使いやすい画面を研究中です。",
-      message: "デザインレビューし合える友達がほしいです。",
-      mbti: "ISFP",
-      sns: "@hina_ui",
-    },
-    {
-      id: "u4",
-      email: "sota@kamiyama.ac.jp",
-      photo: "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=240&q=80",
-      nickname: "そうた",
-      grade: "教職員",
-      hometown: "東京都",
-      hobbies: ["#珈琲", "#ランニング"],
-      interests: ["#教育", "#AI", "#プロジェクト学習"],
-      project: "学年間メンタリングの仕組みづくり #メンタリング #教育",
-      sp: "その他",
-      effort: "学生同士が自然に助け合える場を増やしています。",
-      message: "相談したいことがあれば気軽にどうぞ。",
-      mbti: "",
-      sns: "",
-    },
-  ],
-  wants: [
-    { from: "u2", to: "u1", createdAt: "2026-05-29T12:30:00.000Z" },
-    { from: "u1", to: "u3", createdAt: "2026-05-30T09:10:00.000Z" },
-    { from: "u3", to: "u1", createdAt: "2026-05-31T16:20:00.000Z" },
-  ],
-  notifications: [
-    {
-      id: "n1",
-      to: "u1",
-      from: "u2",
-      type: "want",
-      text: "れんさんがあなたを話したい人に登録しました",
-      createdAt: "2026-05-29T12:30:00.000Z",
-      read: false,
-    },
-    {
-      id: "n2",
-      to: "u1",
-      from: "u3",
-      type: "match",
-      text: "ひなさんとマッチしました",
-      createdAt: "2026-05-31T16:20:00.000Z",
-      read: false,
-    },
-  ],
-  visits: [
-    { viewer: "u1", viewed: "u2", createdAt: "2026-05-31T19:42:00.000Z" },
-    { viewer: "u2", viewed: "u1", createdAt: "2026-05-31T12:00:00.000Z" },
-    { viewer: "u3", viewed: "u1", createdAt: "2026-05-30T18:15:00.000Z" },
-  ],
+  profiles: [],
+  wants: [],
+  notifications: [],
+  visits: [],
 };
 
 const app = document.getElementById("app");
@@ -123,16 +32,26 @@ let route = { name: "home" };
 let query = "";
 let toastTimer = 0;
 
+saveState();
 render();
 
 function loadState() {
   const stored = localStorage.getItem(STORAGE_KEY);
   if (!stored) return structuredClone(seedState);
   try {
-    return { ...structuredClone(seedState), ...JSON.parse(stored) };
+    return removeDemoData({ ...structuredClone(seedState), ...JSON.parse(stored) });
   } catch {
     return structuredClone(seedState);
   }
+}
+
+function removeDemoData(state) {
+  const profiles = state.profiles.filter((profile) => !DEMO_PROFILE_IDS.includes(profile.id));
+  const wants = state.wants.filter((want) => !DEMO_PROFILE_IDS.includes(want.from) && !DEMO_PROFILE_IDS.includes(want.to));
+  const notifications = state.notifications.filter((notice) => !DEMO_PROFILE_IDS.includes(notice.to) && !DEMO_PROFILE_IDS.includes(notice.from));
+  const visits = state.visits.filter((visit) => !DEMO_PROFILE_IDS.includes(visit.viewer) && !DEMO_PROFILE_IDS.includes(visit.viewed));
+  const session = DEMO_PROFILE_IDS.includes(state.session?.userId) ? null : state.session;
+  return { ...state, session, profiles, wants, notifications, visits };
 }
 
 function saveState() {
@@ -203,7 +122,7 @@ function loginView() {
         <form id="loginForm" class="form-stack">
           <label class="field">
             <span>Googleアカウント</span>
-            <input id="emailInput" type="email" value="aoi@kamiyama.ac.jp" autocomplete="email" required />
+            <input id="emailInput" type="email" placeholder="name@kamiyama.ac.jp" autocomplete="email" required />
           </label>
           <p class="hint">@kamiyama.ac.jp のアカウントのみ利用できます。</p>
           <button class="primary-button" type="submit">ログイン</button>
@@ -430,6 +349,7 @@ function bindLogin() {
     if (!profile) {
       profile = createProfile(email);
       data.profiles.push(profile);
+      route = { name: "edit" };
     }
     data.session = { userId: profile.id, email };
     saveState();

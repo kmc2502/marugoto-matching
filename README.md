@@ -19,17 +19,13 @@
 
 ブラウザで `index.html` を開きます。
 
-デモログイン:
-
-```text
-aoi@kamiyama.ac.jp
-```
-
-別ユーザーで試す場合も、メールアドレスの末尾を `@kamiyama.ac.jp` にしてください。
+メールアドレスの末尾を `@kamiyama.ac.jp` にしてください。
 
 ## Firebase接続時の想定
 
-現在はFirebase設定値なしで触れるよう、`localStorage` にデータを保存しています。本番化する場合は以下へ置き換える想定です。
+現在はFirebase設定値なしで触れるよう、`localStorage` にデータを保存しています。この状態ではデータはブラウザごとに保存されるため、他のユーザーが登録した内容は別端末へ反映されません。
+
+全ユーザーでプロフィール・話したい人・通知・足あとを共有するには、Firebase Authentication と Firestore への接続が必要です。本番化する場合は以下へ置き換える想定です。
 
 - ログイン: Firebase Authentication の Google provider
 - 利用制限: ログイン後のメールドメイン検証
