@@ -69,7 +69,8 @@ button {
 .person-row,
 .feature-button,
 .notice-item,
-.tag-index-button {
+.tag-index-button,
+.recommend-button {
   appearance: none;
   border: 1px solid var(--line);
   background: var(--surface);
@@ -92,6 +93,7 @@ button {
 .feature-button:hover,
 .notice-item:hover,
 .tag-index-button:hover,
+.recommend-button:hover,
 .icon-button:hover,
 .primary-button:hover,
 .text-button:hover {
@@ -407,6 +409,39 @@ p {
   width: 100%;
 }
 
+.recommend-button {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  padding: 16px;
+  background: linear-gradient(180deg, white, #f3f8df);
+}
+
+.recommend-button strong {
+  display: block;
+  color: var(--green-deep);
+}
+
+.recommend-button small {
+  display: block;
+  margin-top: 3px;
+  color: var(--muted);
+}
+
+.recommend-button em {
+  display: grid;
+  min-width: 42px;
+  height: 42px;
+  place-items: center;
+  border-radius: 50%;
+  background: var(--green);
+  color: white;
+  font-style: normal;
+  font-weight: 800;
+}
+
 .avatar {
   width: 58px;
   height: 58px;
@@ -568,6 +603,25 @@ p {
   font-size: 0.75rem;
   font-style: normal;
   font-weight: 800;
+}
+
+.recommend-row {
+  align-items: start;
+}
+
+.matched-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.matched-tags b {
+  padding: 4px 7px;
+  border-radius: 999px;
+  background: var(--green-light);
+  color: var(--green-deep);
+  font-size: 0.76rem;
 }
 
 .empty-state {

@@ -170,6 +170,13 @@ function homeView(user) {
             <small>${escapeHtml(user.grade)}</small>
           </span>
         </button>
+        <button class="recommend-button" type="button" data-list="recommendations">
+          <span>
+            <strong>おすすめの人物</strong>
+            <small>趣味・興味分野が近い人</small>
+          </span>
+          <em>${getRecommendedProfiles(user).length}</em>
+        </button>
         <div class="feature-grid">
           ${featureButton("wantsMe", "あなたと話したい人", countWantsMe(user.id))}
           ${featureButton("myWants", "自分の話したい人リスト", countMyWants(user.id))}
@@ -291,6 +298,8 @@ function profileView(user, id) {
 }
 
 function listView(user, kind) {
+  if (kind === "recommendations") return recommendationsView(user);
+
   const config = {
     wantsMe: ["あなたと話したい人", data.wants.filter((want) => want.to === user.id).map((want) => want.from)],
     myWants: ["自分の話したい人リスト", data.wants.filter((want) => want.from === user.id).map((want) => want.to)],
@@ -312,6 +321,28 @@ function listView(user, kind) {
         <button class="icon-button" type="button" data-route="home">戻る</button>
       </div>
       <div class="person-list">${rows.map((profile) => personRow(profile, user.id, kind)).join("") || emptyState("まだ表示できるユーザーがいません")}</div>
+    </section>
+  `;
+}
+
+function recommendationsView(user) {
+  const rows = getRecommendedProfiles(user);
+  return `
+    <section class="page-panel">
+      <div class="page-head">
+        <div>
+          <p class="label">Recommend</p>
+          <h1>おすすめの人物</h1>
+        </div>
+        <button class="icon-button" type="button" data-route="home">戻る</button>
+      </div>
+      <div class="person-list">
+        ${
+          rows
+            .map((item) => recommendedPersonRow(item.profile, user.id, item.matchedTags))
+            .join("") || emptyState("一致する趣味・興味分野のユーザーがまだいません")
+        }
+      </div>
     </section>
   `;
 }
@@ -592,6 +623,35 @@ function searchScore(profile, term) {
   return fields.some((value) => value.includes(term)) ? 40 : 0;
 }
 
+function getRecommendedProfiles(user) {
+  const ownTags = new Set(getProfileRecommendationTags(user).map(normalizeTagForCompare));
+  if (!ownTags.size) return [];
+
+  return data.profiles
+    .filter((profile) => profile.id !== user.id)
+    .map((profile) => {
+      const matchedTags = getProfileRecommendationTags(profile).filter((tag) => ownTags.has(normalizeTagForCompare(tag)));
+      return {
+        profile,
+        matchedTags: Array.from(new Set(matchedTags)),
+      };
+    })
+    .filter((item) => item.matchedTags.length > 0)
+    .sort(
+      (a, b) =>
+        b.matchedTags.length - a.matchedTags.length ||
+        a.profile.nickname.localeCompare(b.profile.nickname, "ja")
+    );
+}
+
+function getProfileRecommendationTags(profile) {
+  return [...profile.hobbies, ...profile.interests].filter(Boolean);
+}
+
+function normalizeTagForCompare(tag) {
+  return String(tag || "").trim().replace(/^#/, "").toLowerCase();
+}
+
 function createProfile(email) {
   const nickname = email.split("@")[0];
   return {
@@ -725,6 +785,21 @@ function personRow(profile, userId, kind = "") {
       <span>
         <strong>${escapeHtml(profile.nickname)}</strong>
         <small>${escapeHtml(profile.grade)}${visit ? ` / ${formatDate(visit.createdAt)}` : ""}</small>
+      </span>
+      ${matched ? `<em>マッチ</em>` : ""}
+    </button>
+  `;
+}
+
+function recommendedPersonRow(profile, userId, matchedTags) {
+  const matched = isMatch(userId, profile.id);
+  return `
+    <button class="person-row recommend-row ${matched ? "matched" : ""}" type="button" data-profile="${profile.id}">
+      ${avatar(profile)}
+      <span>
+        <strong>${escapeHtml(profile.nickname)}</strong>
+        <small>${escapeHtml(profile.grade)} / 一致 ${matchedTags.length}件</small>
+        <span class="matched-tags">${matchedTags.map((tag) => `<b>${escapeHtml(tag)}</b>`).join("")}</span>
       </span>
       ${matched ? `<em>マッチ</em>` : ""}
     </button>
