@@ -38,6 +38,7 @@ const state = {
   notifications: [],
   visits: [],
   route: { name: "home" },
+  authScreen: "login",
   query: "",
   loading: true,
   authMessage: "",
@@ -240,8 +241,8 @@ function render() {
 
   const user = currentUser();
   if (!user) {
-    app.innerHTML = loginView();
-    bindLogin();
+    app.innerHTML = authView();
+    bindAuth();
     return;
   }
 
@@ -308,32 +309,45 @@ function setupView() {
   `;
 }
 
-function loginView() {
+function authView() {
+  const isLogin = state.authScreen === "login";
   return `
     <main class="login-screen">
       <section class="login-visual" aria-label="落ち着いた緑の背景">
         <div class="login-copy">
           <p>Kamiyama Marugoto College</p>
           <h1>まるごとマッチング</h1>
-          <span>校内アカウントのメールアドレスとパスワードでログインできます。</span>
+          <span>${isLogin ? "校内アカウントのメールアドレスとパスワードでログインできます。" : "最初にアカウントを作成すると、そのままプロフィール登録へ進めます。"}</span>
         </div>
       </section>
       <section class="login-panel">
+        <div class="auth-switch" role="tablist" aria-label="認証画面切り替え">
+          <button class="${isLogin ? "active" : ""}" type="button" data-auth-screen="login">ログイン</button>
+          <button class="${!isLogin ? "active" : ""}" type="button" data-auth-screen="signup">新規登録</button>
+        </div>
         <div>
           <p class="label">Supabase Authentication</p>
-          <h2>校内アカウントでログイン</h2>
+          <h2>${isLogin ? "校内アカウントでログイン" : "校内アカウントを新規登録"}</h2>
         </div>
-        <form id="loginForm" class="form-stack">
+        <form id="authForm" class="form-stack">
           <label class="field">
             <span>メールアドレス</span>
             <input id="emailInput" type="email" placeholder="name@kamiyama.ac.jp" autocomplete="email" required />
           </label>
           <label class="field">
             <span>パスワード</span>
-            <input id="passwordInput" type="password" placeholder="パスワードを入力" autocomplete="current-password" required />
+            <input id="passwordInput" type="password" placeholder="パスワードを入力" autocomplete="${isLogin ? "current-password" : "new-password"}" required />
           </label>
+          ${
+            isLogin
+              ? ""
+              : `<label class="field">
+                  <span>パスワード確認</span>
+                  <input id="passwordConfirmInput" type="password" placeholder="もう一度入力" autocomplete="new-password" required />
+                </label>`
+          }
           <p class="hint">${KAMIYAMA_DOMAIN} を含むメールアドレスだけログインできます。</p>
-          <button class="primary-button" type="submit">ログイン</button>
+          <button class="primary-button" type="submit">${isLogin ? "ログイン" : "新規登録"}</button>
           <p class="hint">${escapeHtml(state.authMessage)}</p>
           <p class="error-text" id="loginError">${escapeHtml(state.authError)}</p>
         </form>
@@ -577,11 +591,21 @@ function tagsView() {
   `;
 }
 
-function bindLogin() {
-  document.getElementById("loginForm").addEventListener("submit", async (event) => {
+function bindAuth() {
+  document.querySelectorAll("[data-auth-screen]").forEach((button) => {
+    button.addEventListener("click", () => {
+      state.authScreen = button.dataset.authScreen;
+      state.authMessage = "";
+      state.authError = "";
+      render();
+    });
+  });
+
+  document.getElementById("authForm").addEventListener("submit", async (event) => {
     event.preventDefault();
     const email = document.getElementById("emailInput").value.trim().toLowerCase();
     const password = document.getElementById("passwordInput").value;
+    const passwordConfirm = document.getElementById("passwordConfirmInput")?.value || "";
     const error = document.getElementById("loginError");
     error.textContent = "";
 
@@ -590,19 +614,35 @@ function bindLogin() {
       return;
     }
 
+    if (state.authScreen === "signup") {
+      if (password.length < 8) {
+        error.textContent = "パスワードは8文字以上で入力してください。";
+        return;
+      }
+      if (password !== passwordConfirm) {
+        error.textContent = "パスワード確認が一致していません。";
+        return;
+      }
+    }
+
     state.authMessage = "";
     state.authError = "";
     render();
 
-    const { error: signInError } = await supabaseClient.auth.signInWithPassword({
-      email,
-      password,
-    });
+    const authResult = state.authScreen === "login"
+      ? await supabaseClient.auth.signInWithPassword({ email, password })
+      : await supabaseClient.auth.signUp({ email, password });
 
-    if (signInError) {
-      state.authError = signInError.message;
+    if (authResult.error) {
+      state.authError = formatAuthError(authResult.error.message);
       render();
       return;
+    }
+
+    if (state.authScreen === "signup") {
+      state.authMessage = "新規登録が完了しました。続けてログインしてください。";
+      state.authScreen = "login";
+      render();
     }
   });
 }
@@ -1242,6 +1282,19 @@ function showToast(text) {
   toastRoot.classList.add("visible");
   clearTimeout(toastTimer);
   toastTimer = window.setTimeout(() => toastRoot.classList.remove("visible"), 2200);
+}
+
+function formatAuthError(message) {
+  if (message === "Invalid login credentials") {
+    return "メールアドレスまたはパスワードが違います。未登録なら新規登録から作成してください。";
+  }
+  if (message.includes("User already registered")) {
+    return "このメールアドレスは既に登録されています。ログイン画面から入ってください。";
+  }
+  if (message.includes("Email rate limit exceeded")) {
+    return "短時間に試行が多すぎます。少し待ってから再度試してください。";
+  }
+  return message;
 }
 
 function escapeHtml(value = "") {

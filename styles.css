@@ -236,6 +236,27 @@ button {
   box-shadow: var(--shadow);
 }
 
+.auth-switch {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.auth-switch button {
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 11px 12px;
+  background: #f5f7f2;
+  color: var(--muted);
+  font-weight: 700;
+}
+
+.auth-switch button.active {
+  background: var(--green);
+  border-color: var(--green);
+  color: white;
+}
+
 h1,
 h2,
 h3,
