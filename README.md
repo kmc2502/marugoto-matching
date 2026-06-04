@@ -25,8 +25,9 @@
 1. [supabase-schema.sql](/Users/aokichizuru/Documents/New%20project/supabase-schema.sql) を Supabase SQL Editor で実行します。
 2. [supabase-config.js](/Users/aokichizuru/Documents/New%20project/supabase-config.js) に `url` と `anonKey` を入れます。
 3. Supabase Auth でメールアドレス / パスワード認証を有効にします。
-4. 新規登録画面で `@kamiyama.ac.jp` を含むメールアドレスとパスワードを登録します。
-5. ログイン画面で同じ情報を使ってログインします。
+4. Supabase Auth の `Confirm email` は OFF を推奨します。ON だと新規登録直後にそのままログインできません。
+5. 新規登録画面で `@kamiyama.ac.jp` を含むメールアドレスとパスワードを登録します。
+6. ログイン画面で同じ情報を使ってログインします。
 
 ## 補足
 

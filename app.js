@@ -326,7 +326,6 @@ function authView() {
           <button class="${!isLogin ? "active" : ""}" type="button" data-auth-screen="signup">新規登録</button>
         </div>
         <div>
-          <p class="label">Supabase Authentication</p>
           <h2>${isLogin ? "校内アカウントでログイン" : "校内アカウントを新規登録"}</h2>
         </div>
         <form id="authForm" class="form-stack">
@@ -640,9 +639,13 @@ function bindAuth() {
     }
 
     if (state.authScreen === "signup") {
-      state.authMessage = "新規登録が完了しました。続けてログインしてください。";
-      state.authScreen = "login";
-      render();
+      if (authResult.data.session) {
+        state.authMessage = "新規登録が完了しました。ログイン状態に切り替わります。";
+      } else {
+        state.authMessage = "新規登録は完了しました。Supabase の Confirm email が ON なら、Auth の設定で OFF にするか確認メールを承認してからログインしてください。";
+        state.authScreen = "login";
+        render();
+      }
     }
   });
 }
