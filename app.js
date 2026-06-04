@@ -1,6 +1,6 @@
-const STORAGE_KEY = "marugotoMatching.v1";
 const KAMIYAMA_DOMAIN = "@kamiyama.ac.jp";
-const DEMO_PROFILE_IDS = ["u1", "u2", "u3", "u4"];
+const DEFAULT_AVATAR =
+  "https://images.unsplash.com/photo-1527980965255-d3b416303d12?auto=format&fit=crop&w=240&q=80";
 
 const gradeOptions = ["1年生", "2年生", "3年生", "4年生", "5年生", "その他"];
 const spOptions = [
@@ -18,52 +18,205 @@ const spOptions = [
   "その他",
 ];
 
-const seedState = {
+const app = document.getElementById("app");
+const toastRoot = document.createElement("div");
+toastRoot.className = "toast";
+toastRoot.id = "toast";
+toastRoot.setAttribute("role", "status");
+document.body.appendChild(toastRoot);
+
+const supabaseConfig = window.MARUGOTO_SUPABASE_CONFIG || {};
+const hasSupabaseConfig = Boolean(supabaseConfig.url && supabaseConfig.anonKey);
+const supabaseClient = hasSupabaseConfig && window.supabase
+  ? window.supabase.createClient(supabaseConfig.url, supabaseConfig.anonKey)
+  : null;
+
+const state = {
   session: null,
   profiles: [],
   wants: [],
   notifications: [],
   visits: [],
+  route: { name: "home" },
+  query: "",
+  loading: true,
+  authMessage: "",
+  authError: "",
+  saving: false,
 };
 
-const app = document.getElementById("app");
-let data = loadState();
-let route = { name: "home" };
-let query = "";
 let toastTimer = 0;
 
-saveState();
 render();
+init().catch((error) => {
+  console.error(error);
+  state.loading = false;
+  state.authError = "初期化に失敗しました。設定を確認してください。";
+  render();
+});
 
-function loadState() {
-  const stored = localStorage.getItem(STORAGE_KEY);
-  if (!stored) return structuredClone(seedState);
-  try {
-    return removeDemoData({ ...structuredClone(seedState), ...JSON.parse(stored) });
-  } catch {
-    return structuredClone(seedState);
+async function init() {
+  if (!hasSupabaseConfig || !supabaseClient) {
+    state.loading = false;
+    render();
+    return;
   }
+
+  const {
+    data: { session },
+    error,
+  } = await supabaseClient.auth.getSession();
+
+  if (error) throw error;
+
+  state.session = session;
+
+  if (session?.user) {
+    await bootstrapSignedInUser(session.user);
+  }
+
+  state.loading = false;
+  render();
+
+  supabaseClient.auth.onAuthStateChange(async (_event, sessionNext) => {
+    state.session = sessionNext;
+    state.authError = "";
+
+    if (!sessionNext?.user) {
+      clearAppData();
+      state.route = { name: "home" };
+      render();
+      return;
+    }
+
+    try {
+      await bootstrapSignedInUser(sessionNext.user);
+    } catch (error) {
+      console.error(error);
+      state.authError = "ログイン後の読み込みに失敗しました。";
+    }
+
+    render();
+  });
 }
 
-function removeDemoData(state) {
-  const profiles = state.profiles.filter((profile) => !DEMO_PROFILE_IDS.includes(profile.id));
-  const wants = state.wants.filter((want) => !DEMO_PROFILE_IDS.includes(want.from) && !DEMO_PROFILE_IDS.includes(want.to));
-  const notifications = state.notifications.filter((notice) => !DEMO_PROFILE_IDS.includes(notice.to) && !DEMO_PROFILE_IDS.includes(notice.from));
-  const visits = state.visits.filter((visit) => !DEMO_PROFILE_IDS.includes(visit.viewer) && !DEMO_PROFILE_IDS.includes(visit.viewed));
-  const session = DEMO_PROFILE_IDS.includes(state.session?.userId) ? null : state.session;
-  return { ...state, session, profiles, wants, notifications, visits };
+async function bootstrapSignedInUser(authUser) {
+  if (!String(authUser.email || "").toLowerCase().endsWith(KAMIYAMA_DOMAIN)) {
+    await supabaseClient.auth.signOut();
+    state.authError = `${KAMIYAMA_DOMAIN} を含むメールアドレスのみログインできます。`;
+    clearAppData();
+    return;
+  }
+
+  await ensureProfile(authUser);
+  await loadAppData();
 }
 
-function saveState() {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+async function ensureProfile(authUser) {
+  const baseProfile = {
+    id: authUser.id,
+    email: authUser.email,
+    nickname: (authUser.email || "user").split("@")[0],
+    photo_url: DEFAULT_AVATAR,
+    grade: "その他",
+    hometown: "",
+    hobbies: [],
+    interests: [],
+    project: "",
+    sp: "その他",
+    effort: "",
+    message: "",
+    mbti: "",
+    sns: "",
+  };
+
+  const { error } = await supabaseClient.from("profiles").upsert(baseProfile, { onConflict: "id" });
+  if (error) throw error;
+}
+
+async function loadAppData() {
+  const currentUserId = state.session?.user?.id;
+  if (!currentUserId) return;
+
+  const [profilesResult, wantsResult, notificationsResult, visitsResult] = await Promise.all([
+    supabaseClient.from("profiles").select("*").order("updated_at", { ascending: false }),
+    supabaseClient.from("want_links").select("*").order("created_at", { ascending: false }),
+    supabaseClient
+      .from("notifications")
+      .select("*")
+      .eq("to_user", currentUserId)
+      .order("created_at", { ascending: false }),
+    supabaseClient
+      .from("profile_visits")
+      .select("*")
+      .or(`viewer_id.eq.${currentUserId},viewed_id.eq.${currentUserId}`)
+      .order("created_at", { ascending: false }),
+  ]);
+
+  const errors = [
+    profilesResult.error,
+    wantsResult.error,
+    notificationsResult.error,
+    visitsResult.error,
+  ].filter(Boolean);
+
+  if (errors.length) throw errors[0];
+
+  state.profiles = (profilesResult.data || []).map(mapProfileRow);
+  state.wants = (wantsResult.data || []).map((row) => ({
+    from: row.from_user,
+    to: row.to_user,
+    createdAt: row.created_at,
+  }));
+  state.notifications = (notificationsResult.data || []).map((row) => ({
+    id: row.id,
+    to: row.to_user,
+    from: row.from_user,
+    type: row.type,
+    text: row.text,
+    createdAt: row.created_at,
+    read: row.read,
+  }));
+  state.visits = (visitsResult.data || []).map((row) => ({
+    id: row.id,
+    viewer: row.viewer_id,
+    viewed: row.viewed_id,
+    createdAt: row.created_at,
+  }));
+}
+
+function clearAppData() {
+  state.profiles = [];
+  state.wants = [];
+  state.notifications = [];
+  state.visits = [];
+}
+
+function mapProfileRow(row) {
+  return {
+    id: row.id,
+    email: row.email || "",
+    photo: row.photo_url || DEFAULT_AVATAR,
+    nickname: row.nickname || "",
+    grade: row.grade || "その他",
+    hometown: row.hometown || "",
+    hobbies: Array.isArray(row.hobbies) ? row.hobbies : [],
+    interests: Array.isArray(row.interests) ? row.interests : [],
+    project: row.project || "",
+    sp: row.sp || "その他",
+    effort: row.effort || "",
+    message: row.message || "",
+    mbti: row.mbti || "",
+    sns: row.sns || "",
+  };
 }
 
 function currentUser() {
-  return data.profiles.find((profile) => profile.id === data.session?.userId) || null;
+  return state.profiles.find((profile) => profile.id === state.session?.user?.id) || null;
 }
 
 function byId(id) {
-  return data.profiles.find((profile) => profile.id === id);
+  return state.profiles.find((profile) => profile.id === id);
 }
 
 function isMatch(a, b) {
@@ -71,10 +224,20 @@ function isMatch(a, b) {
 }
 
 function hasWant(from, to) {
-  return data.wants.some((want) => want.from === from && want.to === to);
+  return state.wants.some((want) => want.from === from && want.to === to);
 }
 
 function render() {
+  if (state.loading) {
+    app.innerHTML = loadingView();
+    return;
+  }
+
+  if (!hasSupabaseConfig || !supabaseClient) {
+    app.innerHTML = setupView();
+    return;
+  }
+
   const user = currentUser();
   if (!user) {
     app.innerHTML = loginView();
@@ -93,15 +256,56 @@ function render() {
           </span>
         </button>
         <div class="top-actions">
-          <span class="domain-badge">${escapeHtml(data.session.email)}</span>
+          <span class="domain-badge">${escapeHtml(state.session.user.email || "")}</span>
         </div>
       </header>
       <main>${routeView(user)}</main>
     </div>
-    <div class="toast" id="toast" role="status"></div>
   `;
   bindCommon();
   bindRoute();
+}
+
+function loadingView() {
+  return `
+    <main class="login-screen">
+      <section class="login-visual" aria-label="神山の自然を感じる緑の背景">
+        <div class="login-copy">
+          <p>Kamiyama Marugoto College</p>
+          <h1>まるごとマッチング</h1>
+          <span>読み込み中です。少しだけ待ってください。</span>
+        </div>
+      </section>
+      <section class="login-panel">
+        <div class="setup-card">
+          <p class="label">Loading</p>
+          <h2>アプリを準備しています</h2>
+        </div>
+      </section>
+    </main>
+  `;
+}
+
+function setupView() {
+  return `
+    <main class="login-screen">
+      <section class="login-visual" aria-label="神山の自然を感じる緑の背景">
+        <div class="login-copy">
+          <p>Kamiyama Marugoto College</p>
+          <h1>まるごとマッチング</h1>
+          <span>Supabase の接続情報を入れると、全ユーザーで同じデータを共有できます。</span>
+        </div>
+      </section>
+      <section class="login-panel">
+        <div class="setup-card">
+          <p class="label">Supabase Setup</p>
+          <h2>設定が未完了です</h2>
+          <p class="hint"><code>supabase-config.js</code> に URL と anon key を入れてください。</p>
+          <p class="hint">SQL は <code>supabase-schema.sql</code> に出力しています。</p>
+        </div>
+      </section>
+    </main>
+  `;
 }
 
 function loginView() {
@@ -111,22 +315,23 @@ function loginView() {
         <div class="login-copy">
           <p>Kamiyama Marugoto College</p>
           <h1>まるごとマッチング</h1>
-          <span>興味、プロジェクト、今頑張っていることから、話してみたい人を見つける。</span>
+          <span>校内メールでログインリンクを受け取り、そのままアプリへ戻れます。</span>
         </div>
       </section>
       <section class="login-panel">
         <div>
-          <p class="label">Google Authentication</p>
+          <p class="label">Supabase Authentication</p>
           <h2>校内アカウントでログイン</h2>
         </div>
         <form id="loginForm" class="form-stack">
           <label class="field">
-            <span>Googleアカウント</span>
+            <span>メールアドレス</span>
             <input id="emailInput" type="email" placeholder="name@kamiyama.ac.jp" autocomplete="email" required />
           </label>
-          <p class="hint">@kamiyama.ac.jp のアカウントのみ利用できます。</p>
-          <button class="primary-button" type="submit">ログイン</button>
-          <p class="error-text" id="loginError"></p>
+          <p class="hint">${KAMIYAMA_DOMAIN} を含むメールアドレスだけ送信できます。</p>
+          <button class="primary-button" type="submit">ログインリンクを送信</button>
+          <p class="hint">${escapeHtml(state.authMessage)}</p>
+          <p class="error-text" id="loginError">${escapeHtml(state.authError)}</p>
         </form>
       </section>
     </main>
@@ -134,24 +339,25 @@ function loginView() {
 }
 
 function routeView(user) {
-  if (route.name === "edit") return editView(user);
-  if (route.name === "profile") return profileView(user, route.id);
-  if (route.name === "list") return listView(user, route.kind);
-  if (route.name === "search") return searchView(user);
-  if (route.name === "tags") return tagsView();
+  if (state.route.name === "edit") return editView(user);
+  if (state.route.name === "profile") return profileView(user, state.route.id);
+  if (state.route.name === "list") return listView(user, state.route.kind);
+  if (state.route.name === "search") return searchView(user);
+  if (state.route.name === "tags") return tagsView();
   return homeView(user);
 }
 
 function homeView(user) {
-  const notifications = data.notifications
+  const notifications = state.notifications
     .filter((notification) => notification.to === user.id && !notification.read)
     .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+
   return `
     <section class="home-grid">
       <div class="home-main">
         <button class="search-box search-entry" type="button" data-route="search">
           <span>検索</span>
-          <strong>${query.trim() ? escapeHtml(query) : "学生、興味、プロジェクトを検索"}</strong>
+          <strong>${state.query.trim() ? escapeHtml(state.query) : "学生、興味、プロジェクトを検索"}</strong>
         </button>
         ${
           notifications.length
@@ -199,13 +405,13 @@ function searchView(user) {
         <button class="icon-button" type="button" data-route="home" aria-label="戻る">戻る</button>
         <label class="search-field">
           <span>検索</span>
-          <input id="searchInput" type="search" value="${escapeAttr(query)}" placeholder="化学、#音楽、2年生、プロジェクト..." autocomplete="off" autofocus />
+          <input id="searchInput" type="search" value="${escapeAttr(state.query)}" placeholder="化学、#音楽、2年生、プロジェクト..." autocomplete="off" autofocus />
         </label>
       </div>
       <section class="section-block search-results-block">
         <div class="section-head">
-          <h2 id="searchResultTitle">${query.trim() ? "検索結果" : "キーワードを入力"}</h2>
-          <span id="searchResultCount">${query.trim() ? `${searchProfiles(query, user.id).length}件` : ""}</span>
+          <h2 id="searchResultTitle">${state.query.trim() ? "検索結果" : "キーワードを入力"}</h2>
+          <span id="searchResultCount">${state.query.trim() ? `${searchProfiles(state.query, user.id).length}件` : ""}</span>
         </div>
         <div class="person-list" id="searchResults">${searchResultsMarkup(user)}</div>
       </section>
@@ -251,7 +457,7 @@ function editView(user) {
         ${textField("mbti", "MBTI", user.mbti, false)}
         ${textField("sns", "SNS", user.sns, false)}
         <div class="form-actions">
-          <button class="primary-button" id="saveProfileButton" type="submit">保存</button>
+          <button class="primary-button" id="saveProfileButton" type="submit">${state.saving ? "保存中..." : "保存"}</button>
           <p class="hint">必須項目がそろうと保存できます。</p>
         </div>
       </form>
@@ -263,7 +469,6 @@ function profileView(user, id) {
   const profile = byId(id);
   if (!profile) return notFoundView();
   const isSelf = profile.id === user.id;
-  if (!isSelf) recordVisit(user.id, profile.id);
   const wanted = hasWant(user.id, profile.id);
 
   return `
@@ -301,11 +506,12 @@ function listView(user, kind) {
   if (kind === "recommendations") return recommendationsView(user);
 
   const config = {
-    wantsMe: ["あなたと話したい人", data.wants.filter((want) => want.to === user.id).map((want) => want.from)],
-    myWants: ["自分の話したい人リスト", data.wants.filter((want) => want.from === user.id).map((want) => want.to)],
-    history: ["閲覧履歴", data.visits.filter((visit) => visit.viewer === user.id).sort(sortByDate).map((visit) => visit.viewed)],
-    footprints: ["足あと", data.visits.filter((visit) => visit.viewed === user.id).sort(sortByDate).slice(0, 20).map((visit) => visit.viewer)],
+    wantsMe: ["あなたと話したい人", state.wants.filter((want) => want.to === user.id).map((want) => want.from)],
+    myWants: ["自分の話したい人リスト", state.wants.filter((want) => want.from === user.id).map((want) => want.to)],
+    history: ["閲覧履歴", state.visits.filter((visit) => visit.viewer === user.id).sort(sortByDate).map((visit) => visit.viewed)],
+    footprints: ["足あと", state.visits.filter((visit) => visit.viewed === user.id).sort(sortByDate).slice(0, 20).map((visit) => visit.viewer)],
   }[kind];
+
   if (!config) return notFoundView();
 
   const [title, ids] = config;
@@ -368,22 +574,35 @@ function tagsView() {
 }
 
 function bindLogin() {
-  document.getElementById("loginForm").addEventListener("submit", (event) => {
+  document.getElementById("loginForm").addEventListener("submit", async (event) => {
     event.preventDefault();
     const email = document.getElementById("emailInput").value.trim().toLowerCase();
     const error = document.getElementById("loginError");
-    if (!email.endsWith(KAMIYAMA_DOMAIN)) {
-      error.textContent = `${KAMIYAMA_DOMAIN} のGoogleアカウントのみログインできます。`;
+    error.textContent = "";
+
+    if (!email.includes(KAMIYAMA_DOMAIN)) {
+      error.textContent = `${KAMIYAMA_DOMAIN} を含むメールアドレスのみログインできます。`;
       return;
     }
-    let profile = data.profiles.find((item) => item.email === email);
-    if (!profile) {
-      profile = createProfile(email);
-      data.profiles.push(profile);
-      route = { name: "edit" };
+
+    state.authMessage = "";
+    state.authError = "";
+    render();
+
+    const { error: signInError } = await supabaseClient.auth.signInWithOtp({
+      email,
+      options: {
+        emailRedirectTo: window.location.href,
+      },
+    });
+
+    if (signInError) {
+      state.authError = signInError.message;
+      render();
+      return;
     }
-    data.session = { userId: profile.id, email };
-    saveState();
+
+    state.authMessage = "ログインリンクを送信しました。メールを確認してください。";
     render();
   });
 }
@@ -391,7 +610,7 @@ function bindLogin() {
 function bindCommon() {
   document.querySelectorAll("[data-route]").forEach((button) => {
     button.addEventListener("click", () => {
-      route = { name: button.dataset.route };
+      state.route = { name: button.dataset.route };
       render();
     });
   });
@@ -399,35 +618,58 @@ function bindCommon() {
 
 function bindRoute() {
   bindProfileRows();
+
   document.querySelectorAll("[data-list]").forEach((button) => {
     button.addEventListener("click", () => {
-      route = { name: "list", kind: button.dataset.list };
+      state.route = { name: "list", kind: button.dataset.list };
       render();
     });
   });
+
   document.getElementById("searchInput")?.addEventListener("input", (event) => {
-    query = event.target.value;
+    state.query = event.target.value;
     renderSearchResults();
   });
+
   bindSearchSuggestions();
   bindTagSearch();
-  document.querySelector("[data-action='readNotifications']")?.addEventListener("click", () => {
-    data.notifications = data.notifications.map((notice) =>
-      notice.to === currentUser().id ? { ...notice, read: true } : notice
-    );
-    saveState();
+
+  document.querySelector("[data-action='readNotifications']")?.addEventListener("click", async () => {
+    const current = currentUser();
+    if (!current) return;
+
+    const unreadIds = state.notifications.filter((notice) => notice.to === current.id && !notice.read).map((notice) => notice.id);
+    if (!unreadIds.length) return;
+
+    const { error } = await supabaseClient.from("notifications").update({ read: true }).in("id", unreadIds);
+    if (error) {
+      showToast("通知を更新できませんでした");
+      return;
+    }
+
+    await loadAppData();
     render();
   });
-  document.querySelector("[data-action='toggleWant']")?.addEventListener("click", (event) => {
-    toggleWant(currentUser().id, event.currentTarget.dataset.id);
+
+  document.querySelector("[data-action='toggleWant']")?.addEventListener("click", async (event) => {
+    await toggleWant(currentUser().id, event.currentTarget.dataset.id);
   });
+
   bindProfileForm();
 }
 
 function bindProfileRows() {
   document.querySelectorAll("[data-profile]").forEach((row) => {
-    row.addEventListener("click", () => {
-      route = { name: "profile", id: row.dataset.profile };
+    row.addEventListener("click", async () => {
+      const current = currentUser();
+      if (!current) return;
+
+      const profileId = row.dataset.profile;
+      if (profileId !== current.id) {
+        await recordVisit(current.id, profileId);
+      }
+
+      state.route = { name: "profile", id: profileId };
       render();
     });
   });
@@ -440,9 +682,9 @@ function renderSearchResults() {
   const results = document.getElementById("searchResults");
   if (!user || !title || !count || !results) return;
 
-  const matchedProfiles = searchProfiles(query, user.id);
-  title.textContent = query.trim() ? "検索結果" : "キーワードを入力";
-  count.textContent = query.trim() ? `${matchedProfiles.length}件` : "";
+  const matchedProfiles = searchProfiles(state.query, user.id);
+  title.textContent = state.query.trim() ? "検索結果" : "キーワードを入力";
+  count.textContent = state.query.trim() ? `${matchedProfiles.length}件` : "";
   results.innerHTML = searchResultsMarkup(user);
   bindProfileRows();
   bindSearchSuggestions();
@@ -452,8 +694,8 @@ function bindSearchSuggestions() {
   document.querySelectorAll("[data-suggest]").forEach((button) => {
     button.addEventListener("click", () => {
       const input = document.getElementById("searchInput");
-      query = button.dataset.suggest;
-      if (input) input.value = query;
+      state.query = button.dataset.suggest;
+      if (input) input.value = state.query;
       renderSearchResults();
       input?.focus();
     });
@@ -463,8 +705,8 @@ function bindSearchSuggestions() {
 function bindTagSearch() {
   document.querySelectorAll("[data-tag-search]").forEach((button) => {
     button.addEventListener("click", () => {
-      query = button.dataset.tagSearch;
-      route = { name: "search" };
+      state.query = button.dataset.tagSearch;
+      state.route = { name: "search" };
       render();
     });
   });
@@ -473,6 +715,7 @@ function bindTagSearch() {
 function bindProfileForm() {
   const form = document.getElementById("profileForm");
   if (!form) return;
+
   const gradeSelect = form.elements.gradeSelect;
   const spSelect = form.elements.spSelect;
   const syncConditional = () => {
@@ -499,6 +742,7 @@ function bindProfileForm() {
     const sp = formData.get("spSelect") === "その他" ? formData.get("spOther").trim() : formData.get("spSelect");
     const avatarFile = formData.get("avatarFile");
     let photo = formData.get("photo").trim();
+
     if (avatarFile?.size) {
       try {
         photo = await readFileAsDataUrl(avatarFile);
@@ -507,6 +751,7 @@ function bindProfileForm() {
         return;
       }
     }
+
     const next = {
       ...user,
       photo,
@@ -522,67 +767,133 @@ function bindProfileForm() {
       mbti: formData.get("mbti").trim(),
       sns: formData.get("sns").trim(),
     };
+
     if (!isProfileComplete(next)) {
       showToast("必須項目を入力してください");
       return;
     }
-    data.profiles = data.profiles.map((profile) => (profile.id === user.id ? next : profile));
-    saveState();
+
+    state.saving = true;
+    render();
+
+    const { error } = await supabaseClient.from("profiles").update({
+      photo_url: next.photo,
+      nickname: next.nickname,
+      grade: next.grade,
+      hometown: next.hometown,
+      hobbies: next.hobbies,
+      interests: next.interests,
+      project: next.project,
+      sp: next.sp,
+      effort: next.effort,
+      message: next.message,
+      mbti: next.mbti,
+      sns: next.sns,
+      updated_at: new Date().toISOString(),
+    }).eq("id", user.id);
+
+    state.saving = false;
+
+    if (error) {
+      console.error(error);
+      showToast("プロフィールを保存できませんでした");
+      render();
+      return;
+    }
+
+    await loadAppData();
     showToast("プロフィールを保存しました");
-    route = { name: "home" };
+    state.route = { name: "home" };
     render();
   });
 }
 
-function toggleWant(from, to) {
+async function toggleWant(from, to) {
   const target = byId(to);
-  if (!target) return;
+  const fromProfile = byId(from);
+  if (!target || !fromProfile) return;
+
   if (hasWant(from, to)) {
-    data.wants = data.wants.filter((want) => !(want.from === from && want.to === to));
+    const { error } = await supabaseClient.from("want_links").delete().match({ from_user: from, to_user: to });
+    if (error) {
+      console.error(error);
+      showToast("更新できませんでした");
+      return;
+    }
+    await loadAppData();
     showToast("話したい人から解除しました");
-  } else {
-    data.wants.push({ from, to, createdAt: new Date().toISOString() });
-    const fromProfile = byId(from);
-    data.notifications.push({
-      id: crypto.randomUUID(),
-      to,
-      from,
-      type: "want",
-      text: `${fromProfile.nickname}さんがあなたを話したい人に登録しました`,
-      createdAt: new Date().toISOString(),
+    render();
+    return;
+  }
+
+  const { error: wantError } = await supabaseClient.from("want_links").insert({
+    from_user: from,
+    to_user: to,
+  });
+
+  if (wantError) {
+    console.error(wantError);
+    showToast("登録できませんでした");
+    return;
+  }
+
+  const reciprocal = hasWant(to, from);
+  const notificationsToInsert = [
+    {
+      to_user: to,
+      from_user: from,
+      type: reciprocal ? "match" : "want",
+      text: reciprocal
+        ? `${fromProfile.nickname}さんとマッチしました`
+        : `${fromProfile.nickname}さんがあなたを話したい人に登録しました`,
+      read: false,
+    },
+  ];
+
+  if (reciprocal) {
+    notificationsToInsert.push({
+      to_user: from,
+      from_user: to,
+      type: "match",
+      text: `${target.nickname}さんとマッチしました`,
       read: false,
     });
-    if (hasWant(to, from)) {
-      data.notifications.push({
-        id: crypto.randomUUID(),
-        to: from,
-        from: to,
-        type: "match",
-        text: `${target.nickname}さんとマッチしました`,
-        createdAt: new Date().toISOString(),
-        read: false,
-      });
-    }
-    showToast(isMatch(from, to) ? "マッチしました" : "話したい人に登録しました");
   }
-  saveState();
+
+  const { error: notificationError } = await supabaseClient.from("notifications").insert(notificationsToInsert);
+  if (notificationError) {
+    console.error(notificationError);
+  }
+
+  await loadAppData();
+  showToast(reciprocal ? "マッチしました" : "話したい人に登録しました");
   render();
 }
 
-function recordVisit(viewer, viewed) {
-  const now = Date.now();
-  const latest = data.visits.find((visit) => visit.viewer === viewer && visit.viewed === viewed);
-  if (latest && now - new Date(latest.createdAt).getTime() < 60 * 1000) return;
-  data.visits = [{ viewer, viewed, createdAt: new Date().toISOString() }, ...data.visits]
-    .filter((visit, index, visits) => visits.findIndex((item) => item.viewer === visit.viewer && item.viewed === visit.viewed) === index)
-    .slice(0, 100);
-  saveState();
+async function recordVisit(viewer, viewed) {
+  if (viewer === viewed) return;
+
+  const latest = state.visits.find((visit) => visit.viewer === viewer && visit.viewed === viewed);
+  if (latest && Date.now() - new Date(latest.createdAt).getTime() < 60 * 1000) return;
+
+  const { error } = await supabaseClient.from("profile_visits").insert({
+    viewer_id: viewer,
+    viewed_id: viewed,
+  });
+
+  if (error) {
+    console.error(error);
+    return;
+  }
+
+  await loadAppData();
 }
 
 function searchProfiles(term, currentId) {
   const normalized = term.trim().toLowerCase().replace(/^#/, "");
   if (!normalized) return [];
-  return data.profiles
+
+  return state.profiles
     .filter((profile) => profile.id !== currentId)
     .map((profile) => ({ profile, score: searchScore(profile, normalized) }))
     .filter((item) => item.score > 0)
@@ -591,7 +902,7 @@ function searchProfiles(term, currentId) {
 }
 
 function searchResultsMarkup(user) {
-  if (!query.trim()) {
+  if (!state.query.trim()) {
     return `
       <div class="search-suggestions">
         ${["#化学", "#音楽", "#起業", "2年生", "教育", "プロジェクト"].map((term) => `<button type="button" data-suggest="${escapeAttr(term)}">${escapeHtml(term)}</button>`).join("")}
@@ -599,13 +910,17 @@ function searchResultsMarkup(user) {
       ${emptyState("検索したい言葉を入力してください")}
     `;
   }
-  const results = searchProfiles(query, user.id);
+
+  const results = searchProfiles(state.query, user.id);
   return results.map((profile) => personRow(profile, user.id)).join("") || emptyState("一致するユーザーがいません");
 }
 
 function searchScore(profile, term) {
-  const exactFields = [...profile.hobbies, ...profile.interests, ...extractHashtags(profile.project)].map((tag) => tag.replace(/^#/, "").toLowerCase());
+  const exactFields = [...profile.hobbies, ...profile.interests, ...extractHashtags(profile.project)].map((tag) =>
+    tag.replace(/^#/, "").toLowerCase()
+  );
   if (exactFields.includes(term)) return 100;
+
   const fields = [
     profile.nickname,
     profile.grade,
@@ -619,6 +934,7 @@ function searchScore(profile, term) {
     ...profile.interests,
     ...extractHashtags(profile.project),
   ].map((value) => String(value || "").toLowerCase().replace(/^#/, ""));
+
   if (fields.includes(term)) return 80;
   return fields.some((value) => value.includes(term)) ? 40 : 0;
 }
@@ -627,10 +943,12 @@ function getRecommendedProfiles(user) {
   const ownTags = new Set(getProfileRecommendationTags(user).map(normalizeTagForCompare));
   if (!ownTags.size) return [];
 
-  return data.profiles
+  return state.profiles
     .filter((profile) => profile.id !== user.id)
     .map((profile) => {
-      const matchedTags = getProfileRecommendationTags(profile).filter((tag) => ownTags.has(normalizeTagForCompare(tag)));
+      const matchedTags = getProfileRecommendationTags(profile).filter((tag) =>
+        ownTags.has(normalizeTagForCompare(tag))
+      );
       return {
         profile,
         matchedTags: Array.from(new Set(matchedTags)),
@@ -655,9 +973,9 @@ function normalizeTagForCompare(tag) {
 function createProfile(email) {
   const nickname = email.split("@")[0];
   return {
-    id: crypto.randomUUID(),
+    id: "",
     email,
-    photo: "https://images.unsplash.com/photo-1527980965255-d3b416303d12?auto=format&fit=crop&w=240&q=80",
+    photo: DEFAULT_AVATAR,
     nickname,
     grade: "その他",
     hometown: "",
@@ -697,7 +1015,7 @@ function extractHashtags(value) {
 }
 
 function collectHashtags() {
-  return data.profiles.reduce(
+  return state.profiles.reduce(
     (groups, profile) => {
       addTags(groups.hobbies, profile.hobbies);
       addTags(groups.interests, profile.interests);
@@ -736,7 +1054,9 @@ function tagGroup(title, tagsMap) {
       <div class="tag-index-list">
         ${
           items.length
-            ? items.map(([tag, count]) => `<button type="button" data-tag-search="${escapeAttr(tag)}"><span>${escapeHtml(tag)}</span><small>${count}</small></button>`).join("")
+            ? items
+                .map(([tag, count]) => `<button type="button" data-tag-search="${escapeAttr(tag)}"><span>${escapeHtml(tag)}</span><small>${count}</small></button>`)
+                .join("")
             : emptyState("登録されたハッシュタグがありません")
         }
       </div>
@@ -755,7 +1075,9 @@ function projectGroup(projectsMap) {
       <div class="project-index-list">
         ${
           items.length
-            ? items.map(([project, count]) => `<button type="button" data-tag-search="${escapeAttr(project)}"><span>${escapeHtml(project)}</span><small>${count}</small></button>`).join("")
+            ? items
+                .map(([project, count]) => `<button type="button" data-tag-search="${escapeAttr(project)}"><span>${escapeHtml(project)}</span><small>${count}</small></button>`)
+                .join("")
             : emptyState("登録されたプロジェクトがありません")
         }
       </div>
@@ -775,10 +1097,11 @@ function featureButton(kind, title, count) {
 function personRow(profile, userId, kind = "") {
   const matched = isMatch(userId, profile.id);
   const visit = kind === "history"
-    ? data.visits.find((item) => item.viewer === userId && item.viewed === profile.id)
+    ? state.visits.find((item) => item.viewer === userId && item.viewed === profile.id)
     : kind === "footprints"
-      ? data.visits.find((item) => item.viewer === profile.id && item.viewed === userId)
+      ? state.visits.find((item) => item.viewer === profile.id && item.viewed === userId)
       : null;
+
   return `
     <button class="person-row ${matched ? "matched" : ""}" type="button" data-profile="${profile.id}">
       ${avatar(profile)}
@@ -885,19 +1208,19 @@ function notFoundView() {
 }
 
 function countWantsMe(id) {
-  return data.wants.filter((want) => want.to === id).length;
+  return state.wants.filter((want) => want.to === id).length;
 }
 
 function countMyWants(id) {
-  return data.wants.filter((want) => want.from === id).length;
+  return state.wants.filter((want) => want.from === id).length;
 }
 
 function countHistory(id) {
-  return data.visits.filter((visit) => visit.viewer === id).length;
+  return state.visits.filter((visit) => visit.viewer === id).length;
 }
 
 function countFootprints(id) {
-  return Math.min(20, data.visits.filter((visit) => visit.viewed === id).length);
+  return Math.min(20, state.visits.filter((visit) => visit.viewed === id).length);
 }
 
 function sortByDate(a, b) {
@@ -914,12 +1237,11 @@ function formatDate(value) {
 }
 
 function showToast(text) {
-  const toast = document.getElementById("toast");
-  if (!toast) return;
-  toast.textContent = text;
-  toast.classList.add("visible");
+  if (!toastRoot) return;
+  toastRoot.textContent = text;
+  toastRoot.classList.add("visible");
   clearTimeout(toastTimer);
-  toastTimer = window.setTimeout(() => toast.classList.remove("visible"), 2200);
+  toastTimer = window.setTimeout(() => toastRoot.classList.remove("visible"), 2200);
 }
 
 function escapeHtml(value = "") {

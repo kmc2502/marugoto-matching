@@ -226,6 +226,16 @@ button {
   background: rgba(255, 255, 255, 0.94);
 }
 
+.setup-card {
+  display: grid;
+  gap: 12px;
+  padding: 22px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: white;
+  box-shadow: var(--shadow);
+}
+
 h1,
 h2,
 h3,
