@@ -311,11 +311,11 @@ function setupView() {
 function loginView() {
   return `
     <main class="login-screen">
-      <section class="login-visual" aria-label="神山の自然を感じる緑の背景">
+      <section class="login-visual" aria-label="落ち着いた緑の背景">
         <div class="login-copy">
           <p>Kamiyama Marugoto College</p>
           <h1>まるごとマッチング</h1>
-          <span>校内メールでログインリンクを受け取り、そのままアプリへ戻れます。</span>
+          <span>校内アカウントのメールアドレスとパスワードでログインできます。</span>
         </div>
       </section>
       <section class="login-panel">
@@ -328,8 +328,12 @@ function loginView() {
             <span>メールアドレス</span>
             <input id="emailInput" type="email" placeholder="name@kamiyama.ac.jp" autocomplete="email" required />
           </label>
-          <p class="hint">${KAMIYAMA_DOMAIN} を含むメールアドレスだけ送信できます。</p>
-          <button class="primary-button" type="submit">ログインリンクを送信</button>
+          <label class="field">
+            <span>パスワード</span>
+            <input id="passwordInput" type="password" placeholder="パスワードを入力" autocomplete="current-password" required />
+          </label>
+          <p class="hint">${KAMIYAMA_DOMAIN} を含むメールアドレスだけログインできます。</p>
+          <button class="primary-button" type="submit">ログイン</button>
           <p class="hint">${escapeHtml(state.authMessage)}</p>
           <p class="error-text" id="loginError">${escapeHtml(state.authError)}</p>
         </form>
@@ -577,6 +581,7 @@ function bindLogin() {
   document.getElementById("loginForm").addEventListener("submit", async (event) => {
     event.preventDefault();
     const email = document.getElementById("emailInput").value.trim().toLowerCase();
+    const password = document.getElementById("passwordInput").value;
     const error = document.getElementById("loginError");
     error.textContent = "";
 
@@ -589,11 +594,9 @@ function bindLogin() {
     state.authError = "";
     render();
 
-    const { error: signInError } = await supabaseClient.auth.signInWithOtp({
+    const { error: signInError } = await supabaseClient.auth.signInWithPassword({
       email,
-      options: {
-        emailRedirectTo: window.location.href,
-      },
+      password,
     });
 
     if (signInError) {
@@ -601,9 +604,6 @@ function bindLogin() {
       render();
       return;
     }
-
-    state.authMessage = "ログインリンクを送信しました。メールを確認してください。";
-    render();
   });
 }
 

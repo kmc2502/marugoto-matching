@@ -4,7 +4,7 @@
 
 ## 実装内容
 
-- `@kamiyama.ac.jp` を含むメールアドレスだけ送信できるログイン画面
+- `@kamiyama.ac.jp` を含むメールアドレスとパスワードでログインできる画面
 - ホーム検索、通知一覧、自分のプロフィール、2x2機能アイコン
 - プロフィール閲覧と本人のみ編集
 - 学年・所属SPの「その他」自由記述
@@ -23,7 +23,8 @@
 
 1. [supabase-schema.sql](/Users/aokichizuru/Documents/New%20project/supabase-schema.sql) を Supabase SQL Editor で実行します。
 2. [supabase-config.js](/Users/aokichizuru/Documents/New%20project/supabase-config.js) に `url` と `anonKey` を入れます。
-3. ログイン画面で `@kamiyama.ac.jp` を含むメールアドレスを入力すると、Supabase からログインリンクが送られます。
+3. Supabase Auth でメールアドレス / パスワード認証を有効にします。
+4. ログイン画面で `@kamiyama.ac.jp` を含むメールアドレスとパスワードを入力してログインします。
 
 ## 補足
 

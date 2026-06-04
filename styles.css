@@ -182,8 +182,8 @@ button {
   min-height: 100vh;
   padding: clamp(28px, 6vw, 72px);
   background:
-    linear-gradient(180deg, rgba(11, 68, 42, 0.1), rgba(11, 68, 42, 0.8)),
-    url("https://images.unsplash.com/photo-1500530855697-b586d89ba3ee?auto=format&fit=crop&w=1600&q=80") center/cover;
+    radial-gradient(circle at top left, rgba(255, 255, 255, 0.1), transparent 28%),
+    linear-gradient(180deg, #2f6d4f 0%, #184a33 100%);
   color: white;
 }
 
