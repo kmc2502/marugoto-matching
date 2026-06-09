@@ -517,7 +517,6 @@ function homeView(user) {
             : ""
         }
       </div>
-      <aside class="home-side"></aside>
     </section>
   `;
 }

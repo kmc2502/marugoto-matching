@@ -330,13 +330,13 @@ p {
 
 .home-grid {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 340px;
-  gap: 18px;
+  max-width: 780px;
+  margin: 0 auto;
+  gap: 20px;
   align-items: start;
 }
 
 .home-main,
-.home-side,
 .home-tools,
 .page-panel {
   display: grid;
@@ -362,7 +362,7 @@ p {
 .search-box {
   display: grid;
   gap: 8px;
-  padding: 16px;
+  padding: 18px 20px;
 }
 
 .search-box span,
@@ -453,8 +453,8 @@ p {
 .profile-card {
   display: flex;
   align-items: center;
-  gap: 12px;
-  padding: 16px;
+  gap: 14px;
+  padding: 18px;
   width: 100%;
 }
 
@@ -462,9 +462,9 @@ p {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
-  gap: 12px;
+  gap: 14px;
   width: 100%;
-  padding: 16px;
+  padding: 18px;
   background: linear-gradient(180deg, white, #f3f8df);
 }
 
@@ -481,8 +481,8 @@ p {
 
 .recommend-button em {
   display: grid;
-  min-width: 42px;
-  height: 42px;
+  min-width: 46px;
+  height: 46px;
   place-items: center;
   border-radius: 50%;
   background: var(--green);
@@ -492,8 +492,8 @@ p {
 }
 
 .avatar {
-  width: 58px;
-  height: 58px;
+  width: 64px;
+  height: 64px;
   flex: 0 0 auto;
   border-radius: 50%;
   object-fit: cover;
@@ -504,17 +504,13 @@ p {
 .feature-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 10px;
-}
-
-.home-side {
-  display: none;
+  gap: 12px;
 }
 
 .feature-button {
   display: grid;
-  min-height: 122px;
-  padding: 14px;
+  min-height: 136px;
+  padding: 16px;
   align-content: space-between;
   background: linear-gradient(180deg, white, var(--surface-soft));
 }
@@ -526,7 +522,7 @@ p {
 
 .feature-button strong {
   color: var(--green);
-  font-size: 1.7rem;
+  font-size: 1.9rem;
 }
 
 .tag-index-button {
@@ -535,7 +531,7 @@ p {
   justify-content: space-between;
   gap: 12px;
   width: 100%;
-  padding: 16px;
+  padding: 18px;
   background: var(--green-deep);
   color: white;
 }
