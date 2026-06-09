@@ -218,7 +218,11 @@ async function ensureProfile(authUser) {
     sns: "",
   };
 
-  const { error } = await supabaseClient.from("profiles").upsert(baseProfile, { onConflict: "id" });
+  let { error } = await supabaseClient.from("profiles").upsert(baseProfile, { onConflict: "id" });
+  if (error && isMissingSchemaFeatureError(error, "strengths")) {
+    const { strengths, ...legacyProfile } = baseProfile;
+    ({ error } = await supabaseClient.from("profiles").upsert(legacyProfile, { onConflict: "id" }));
+  }
   if (error) throw error;
 }
 
@@ -242,12 +246,15 @@ async function loadAppData() {
     supabaseClient.from("tag_options").select("*").order("label", { ascending: true }),
   ]);
 
+  if (tagOptionsResult.error) {
+    console.warn("tag_options load skipped", tagOptionsResult.error);
+  }
+
   const errors = [
     profilesResult.error,
     wantsResult.error,
     notificationsResult.error,
     visitsResult.error,
-    tagOptionsResult.error && tagOptionsResult.error.code !== "42P01" ? tagOptionsResult.error : null,
   ].filter(Boolean);
 
   if (errors.length) throw errors[0];
@@ -273,7 +280,7 @@ async function loadAppData() {
     viewed: row.viewed_id,
     createdAt: row.created_at,
   }));
-  state.tagCatalog = buildTagCatalog(tagOptionsResult.error?.code === "42P01" ? [] : (tagOptionsResult.data || []));
+  state.tagCatalog = buildTagCatalog(tagOptionsResult.error ? [] : (tagOptionsResult.data || []));
 }
 
 function clearAppData() {
@@ -945,22 +952,7 @@ function bindProfileForm() {
       return;
     }
 
-    const { error } = await supabaseClient.from("profiles").update({
-      photo_url: next.photo,
-      nickname: next.nickname,
-      grade: next.grade,
-      hometown: next.hometown,
-      hobbies: next.hobbies,
-      interests: next.interests,
-      strengths: next.strengths,
-      project: next.project,
-      sp: next.sp,
-      effort: next.effort,
-      message: next.message,
-      mbti: next.mbti,
-      sns: next.sns,
-      updated_at: new Date().toISOString(),
-    }).eq("id", user.id);
+    const { error } = await updateProfileRecord(user.id, next);
 
     state.saving = false;
 
@@ -1151,12 +1143,55 @@ async function syncSharedTagOptions(tagGroups) {
     .from("tag_options")
     .upsert(rows, { onConflict: "category,label", ignoreDuplicates: true });
 
-  if (error && error.code !== "42P01") {
+  if (error && !isMissingSchemaFeatureError(error, "tag_options")) {
     console.error(error);
     return error;
   }
 
   return null;
+}
+
+async function updateProfileRecord(userId, next) {
+  const payload = {
+    photo_url: next.photo,
+    nickname: next.nickname,
+    grade: next.grade,
+    hometown: next.hometown,
+    hobbies: next.hobbies,
+    interests: next.interests,
+    strengths: next.strengths,
+    project: next.project,
+    sp: next.sp,
+    effort: next.effort,
+    message: next.message,
+    mbti: next.mbti,
+    sns: next.sns,
+    updated_at: new Date().toISOString(),
+  };
+
+  let result = await supabaseClient.from("profiles").update(payload).eq("id", userId);
+  if (result.error && isMissingSchemaFeatureError(result.error, "strengths")) {
+    const { strengths, ...legacyPayload } = payload;
+    result = await supabaseClient.from("profiles").update(legacyPayload).eq("id", userId);
+  }
+
+  return result;
+}
+
+function isMissingSchemaFeatureError(error, featureName) {
+  const message = String(error?.message || "").toLowerCase();
+  const details = String(error?.details || "").toLowerCase();
+  const hint = String(error?.hint || "").toLowerCase();
+  const needle = String(featureName || "").toLowerCase();
+
+  return (
+    error?.code === "42P01" ||
+    error?.code === "42703" ||
+    error?.code === "42501" ||
+    message.includes(needle) ||
+    details.includes(needle) ||
+    hint.includes(needle)
+  );
 }
 
 function createProfile(email) {
