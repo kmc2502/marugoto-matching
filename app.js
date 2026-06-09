@@ -18,6 +18,42 @@ const spOptions = [
   "その他",
 ];
 
+const hobbyOptions = [
+  "#料理",
+  "#作曲",
+  "#音楽",
+  "#写真",
+  "#映画",
+  "#読書",
+  "#イラスト",
+  "#ゲーム",
+  "#登山",
+  "#散歩",
+  "#ランニング",
+  "#化学",
+  "#プログラミング",
+  "#カフェ",
+  "#旅行",
+];
+
+const interestOptions = [
+  "#起業",
+  "#IP産業",
+  "#教育",
+  "#デザイン",
+  "#AI",
+  "#UI",
+  "#ゲーム",
+  "#環境",
+  "#有機化学",
+  "#ものづくり",
+  "#地域",
+  "#心理学",
+  "#映像",
+  "#建築",
+  "#ロボティクス",
+];
+
 const app = document.getElementById("app");
 const toastRoot = document.createElement("div");
 toastRoot.className = "toast";
@@ -258,6 +294,9 @@ function render() {
         </button>
         <div class="top-actions">
           <span class="domain-badge">${escapeHtml(state.session.user.email || "")}</span>
+          <button class="logout-chip" type="button" data-action="logout" aria-label="ログアウト">
+            ↗
+          </button>
         </div>
       </header>
       <main>${routeView(user)}</main>
@@ -458,8 +497,8 @@ function editView(user) {
           <input name="gradeOther" maxlength="20" value="${gradeOptions.includes(user.grade) ? "" : escapeAttr(user.grade)}" />
         </label>
         ${textField("hometown", "出身地", user.hometown, true)}
-        ${textField("hobbies", "趣味（例）#料理 #作曲 ...", user.hobbies.join(" "), true)}
-        ${textField("interests", "興味分野（例）#起業 #IP産業 ...", user.interests.join(" "), true)}
+        ${multiSelectField("hobbies", "趣味", hobbyOptions, user.hobbies)}
+        ${multiSelectField("interests", "興味分野", interestOptions, user.interests)}
         ${textField("project", "所属プロジェクト", user.project, true)}
         <label class="field">
           <span>所属SP</span>
@@ -657,6 +696,18 @@ function bindCommon() {
       render();
     });
   });
+
+  document.querySelector("[data-action='logout']")?.addEventListener("click", async () => {
+    const { error } = await supabaseClient.auth.signOut();
+    if (error) {
+      console.error(error);
+      showToast("ログアウトできませんでした");
+      return;
+    }
+    state.authMessage = "";
+    state.authError = "";
+    showToast("ログアウトしました");
+  });
 }
 
 function bindRoute() {
@@ -777,6 +828,9 @@ function bindProfileForm() {
     preview.src = URL.createObjectURL(file);
   });
 
+  bindInterestPicker(form, "hobbies");
+  bindInterestPicker(form, "interests");
+
   form.addEventListener("submit", async (event) => {
     event.preventDefault();
     const formData = new FormData(form);
@@ -801,8 +855,8 @@ function bindProfileForm() {
       nickname: formData.get("nickname").trim(),
       grade,
       hometown: formData.get("hometown").trim(),
-      hobbies: normalizeTags(formData.get("hobbies")),
-      interests: normalizeTags(formData.get("interests")),
+      hobbies: collectSelectedTags(form, "hobbies"),
+      interests: collectSelectedTags(form, "interests"),
       project: formData.get("project").trim(),
       sp,
       effort: formData.get("effort").trim(),
@@ -1053,6 +1107,38 @@ function normalizeTags(value) {
     .filter((tag) => tag.length > 1);
 }
 
+function collectSelectedTags(form, name) {
+  const selected = Array.from(
+    form.querySelectorAll(`[data-interest-option="${name}"].selected`),
+    (button) => button.dataset.value
+  );
+  const custom = normalizeTags(form.elements[`${name}Custom`]?.value || "");
+  return Array.from(new Set([...selected, ...custom]));
+}
+
+function bindInterestPicker(form, name) {
+  const buttons = form.querySelectorAll(`[data-interest-option="${name}"]`);
+  const selectedRoot = form.querySelector(`[data-selected-tags="${name}"]`);
+  const customInput = form.elements[`${name}Custom`];
+
+  const renderSelected = () => {
+    const values = collectSelectedTags(form, name);
+    selectedRoot.innerHTML = values.length
+      ? values.map((value) => `<span>${escapeHtml(value)}</span>`).join("")
+      : `<p class="picker-empty">まだ選択されていません</p>`;
+  };
+
+  buttons.forEach((button) => {
+    button.addEventListener("click", () => {
+      button.classList.toggle("selected");
+      renderSelected();
+    });
+  });
+
+  customInput?.addEventListener("input", renderSelected);
+  renderSelected();
+}
+
 function extractHashtags(value) {
   return Array.from(String(value || "").matchAll(/#[^\s#、,，。]+/g), (match) => match[0]);
 }
@@ -1226,6 +1312,51 @@ function imageUploadField(user) {
       <input name="avatarFile" type="file" accept="image/*" />
       <input name="photo" type="hidden" value="${escapeAttr(user.photo)}" />
     </label>
+  `;
+}
+
+function multiSelectField(name, label, options, selectedValues) {
+  const selected = new Set(selectedValues);
+  const preset = options.filter((option) => selected.has(option));
+  const custom = selectedValues.filter((value) => !options.includes(value)).join(" ");
+
+  return `
+    <section class="field span-2 picker-field">
+      <span>${label}</span>
+      <div class="picker-shell">
+        <div class="picker-selected" data-selected-tags="${name}">
+          ${
+            preset.length
+              ? preset.map((value) => `<span>${escapeHtml(value)}</span>`).join("")
+              : `<p class="picker-empty">まだ選択されていません</p>`
+          }
+        </div>
+        <div class="picker-options" role="listbox" aria-label="${escapeAttr(label)}の候補">
+          ${options
+            .map(
+              (option) => `
+                <button
+                  class="picker-option ${selected.has(option) ? "selected" : ""}"
+                  type="button"
+                  data-interest-option="${name}"
+                  data-value="${escapeAttr(option)}"
+                >
+                  ${escapeHtml(option)}
+                </button>
+              `
+            )
+            .join("")}
+        </div>
+        <label class="field picker-custom">
+          <span>自由記述（任意）</span>
+          <input
+            name="${name}Custom"
+            value="${escapeAttr(custom)}"
+            placeholder="例: #盆栽 #天文学"
+          />
+        </label>
+      </div>
+    </section>
   `;
 }
 
