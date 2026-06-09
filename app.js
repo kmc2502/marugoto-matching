@@ -1336,9 +1336,9 @@ function mergeTagOptions(defaults, extras) {
 
 function collectTagGroups() {
   const groups = {
-    hobbies: seedTagMap(state.tagCatalog.hobbies),
-    interests: seedTagMap(state.tagCatalog.interests),
-    strengths: seedTagMap(state.tagCatalog.strengths),
+    hobbies: new Map(),
+    interests: new Map(),
+    strengths: new Map(),
   };
 
   state.profiles.forEach((profile) => {
@@ -1356,17 +1356,6 @@ function addTags(map, tagsToAdd) {
     if (!normalized) return;
     map.set(normalized, (map.get(normalized) || 0) + 1);
   });
-}
-
-function seedTagMap(items) {
-  const map = new Map();
-  items.forEach((item) => {
-    const normalized = normalizeSingleTag(item);
-    if (normalized && !map.has(normalized)) {
-      map.set(normalized, 0);
-    }
-  });
-  return map;
 }
 
 function countAllTags() {
