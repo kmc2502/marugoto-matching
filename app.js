@@ -349,16 +349,14 @@ function render() {
     <div class="shell">
       <header class="topbar">
         <button class="brand" type="button" data-route="home" aria-label="ホームへ戻る">
-          <span class="brand-mark">M</span>
           <span>
-            <strong>まるごとマッチング</strong>
-            <small>Kamiyama connection board</small>
+            <strong>ホーム</strong>
           </span>
         </button>
         <div class="top-actions">
           <span class="domain-badge">${escapeHtml(state.session.user.email || "")}</span>
           <button class="logout-chip" type="button" data-action="logout" aria-label="ログアウト">
-            ↗
+            ログアウト
           </button>
         </div>
       </header>
