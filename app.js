@@ -354,7 +354,6 @@ function render() {
           </span>
         </button>
         <div class="top-actions">
-          <span class="domain-badge">${escapeHtml(state.session.user.email || "")}</span>
           <button class="logout-chip" type="button" data-action="logout" aria-label="ログアウト">
             ログアウト
           </button>
