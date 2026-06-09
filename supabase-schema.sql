@@ -9,6 +9,7 @@ create table if not exists public.profiles (
   hometown text not null default '',
   hobbies text[] not null default '{}',
   interests text[] not null default '{}',
+  strengths text[] not null default '{}',
   project text not null default '',
   sp text not null default 'その他',
   effort text not null default '',
@@ -46,6 +47,90 @@ create table if not exists public.profile_visits (
   created_at timestamptz not null default now(),
   constraint profile_visits_self check (viewer_id <> viewed_id)
 );
+
+create table if not exists public.tag_options (
+  id uuid primary key default gen_random_uuid(),
+  category text not null check (category in ('hobbies', 'interests', 'strengths')),
+  label text not null,
+  created_at timestamptz not null default now(),
+  constraint tag_options_unique unique (category, label)
+);
+
+insert into public.tag_options (category, label)
+values
+  ('hobbies', '#料理'),
+  ('hobbies', '#作曲'),
+  ('hobbies', '#音楽'),
+  ('hobbies', '#写真'),
+  ('hobbies', '#映画'),
+  ('hobbies', '#読書'),
+  ('hobbies', '#イラスト'),
+  ('hobbies', '#ゲーム'),
+  ('hobbies', '#登山'),
+  ('hobbies', '#散歩'),
+  ('hobbies', '#ランニング'),
+  ('hobbies', '#化学'),
+  ('hobbies', '#プログラミング'),
+  ('hobbies', '#AI開発'),
+  ('hobbies', '#アプリ開発'),
+  ('hobbies', '#スポーツ'),
+  ('hobbies', '#スポーツ観戦'),
+  ('hobbies', '#映像制作'),
+  ('hobbies', '#お菓子作り'),
+  ('hobbies', '#手芸'),
+  ('hobbies', '#演奏'),
+  ('hobbies', '#釣り'),
+  ('hobbies', '#キャンプ'),
+  ('hobbies', '#山登り'),
+  ('hobbies', '#川遊び'),
+  ('hobbies', '#カフェ'),
+  ('hobbies', '#旅行'),
+  ('hobbies', '#メイク'),
+  ('hobbies', '#ネイル'),
+  ('hobbies', '#ファッション'),
+  ('interests', '#起業'),
+  ('interests', '#IP産業'),
+  ('interests', '#教育'),
+  ('interests', '#デザイン'),
+  ('interests', '#UI/UXデザイン'),
+  ('interests', '#エディトリアルデザイン'),
+  ('interests', '#Webデザイン'),
+  ('interests', '#Webプログラミング'),
+  ('interests', '#AI'),
+  ('interests', '#UI'),
+  ('interests', '#ゲーム'),
+  ('interests', '#環境'),
+  ('interests', '#有機化学'),
+  ('interests', '#ものづくり'),
+  ('interests', '#言語学'),
+  ('interests', '#歴史'),
+  ('interests', '#スタートアップ'),
+  ('interests', '#株'),
+  ('interests', '#投資'),
+  ('interests', '#金融'),
+  ('interests', '#航空宇宙産業'),
+  ('interests', '#地域'),
+  ('interests', '#心理学'),
+  ('interests', '#映像'),
+  ('interests', '#芸術'),
+  ('interests', '#建築'),
+  ('interests', '#ロボティクス'),
+  ('strengths', '#プレゼン'),
+  ('strengths', '#ファシリテーション'),
+  ('strengths', '#文章作成'),
+  ('strengths', '#データ分析'),
+  ('strengths', '#リサーチ'),
+  ('strengths', '#UI設計'),
+  ('strengths', '#Web開発'),
+  ('strengths', '#アプリ開発'),
+  ('strengths', '#プロトタイピング'),
+  ('strengths', '#動画編集'),
+  ('strengths', '#撮影'),
+  ('strengths', '#イラスト制作'),
+  ('strengths', '#企画'),
+  ('strengths', '#英語'),
+  ('strengths', '#チーム運営')
+on conflict (category, label) do nothing;
 
 create or replace function public.touch_updated_at()
 returns trigger
@@ -102,6 +187,7 @@ alter table public.profiles enable row level security;
 alter table public.want_links enable row level security;
 alter table public.notifications enable row level security;
 alter table public.profile_visits enable row level security;
+alter table public.tag_options enable row level security;
 
 drop policy if exists "profiles_select_authenticated" on public.profiles;
 create policy "profiles_select_authenticated"
@@ -181,3 +267,17 @@ on public.profile_visits
 for insert
 to authenticated
 with check (auth.uid() = viewer_id);
+
+drop policy if exists "tag_options_select_authenticated" on public.tag_options;
+create policy "tag_options_select_authenticated"
+on public.tag_options
+for select
+to authenticated
+using (true);
+
+drop policy if exists "tag_options_insert_authenticated" on public.tag_options;
+create policy "tag_options_insert_authenticated"
+on public.tag_options
+for insert
+to authenticated
+with check (true);

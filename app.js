@@ -81,6 +81,24 @@ const interestOptions = [
   "#ロボティクス",
 ];
 
+const strengthOptions = [
+  "#プレゼン",
+  "#ファシリテーション",
+  "#文章作成",
+  "#データ分析",
+  "#リサーチ",
+  "#UI設計",
+  "#Web開発",
+  "#アプリ開発",
+  "#プロトタイピング",
+  "#動画編集",
+  "#撮影",
+  "#イラスト制作",
+  "#企画",
+  "#英語",
+  "#チーム運営",
+];
+
 const app = document.getElementById("app");
 const toastRoot = document.createElement("div");
 toastRoot.className = "toast";
@@ -100,6 +118,11 @@ const state = {
   wants: [],
   notifications: [],
   visits: [],
+  tagCatalog: {
+    hobbies: [],
+    interests: [],
+    strengths: [],
+  },
   route: { name: "home" },
   authScreen: "login",
   query: "",
@@ -186,6 +209,7 @@ async function ensureProfile(authUser) {
     hometown: "",
     hobbies: [],
     interests: [],
+    strengths: [],
     project: "",
     sp: "その他",
     effort: "",
@@ -202,7 +226,7 @@ async function loadAppData() {
   const currentUserId = state.session?.user?.id;
   if (!currentUserId) return;
 
-  const [profilesResult, wantsResult, notificationsResult, visitsResult] = await Promise.all([
+  const [profilesResult, wantsResult, notificationsResult, visitsResult, tagOptionsResult] = await Promise.all([
     supabaseClient.from("profiles").select("*").order("updated_at", { ascending: false }),
     supabaseClient.from("want_links").select("*").order("created_at", { ascending: false }),
     supabaseClient
@@ -215,6 +239,7 @@ async function loadAppData() {
       .select("*")
       .or(`viewer_id.eq.${currentUserId},viewed_id.eq.${currentUserId}`)
       .order("created_at", { ascending: false }),
+    supabaseClient.from("tag_options").select("*").order("label", { ascending: true }),
   ]);
 
   const errors = [
@@ -222,6 +247,7 @@ async function loadAppData() {
     wantsResult.error,
     notificationsResult.error,
     visitsResult.error,
+    tagOptionsResult.error && tagOptionsResult.error.code !== "42P01" ? tagOptionsResult.error : null,
   ].filter(Boolean);
 
   if (errors.length) throw errors[0];
@@ -247,6 +273,7 @@ async function loadAppData() {
     viewed: row.viewed_id,
     createdAt: row.created_at,
   }));
+  state.tagCatalog = buildTagCatalog(tagOptionsResult.error?.code === "42P01" ? [] : (tagOptionsResult.data || []));
 }
 
 function clearAppData() {
@@ -254,6 +281,7 @@ function clearAppData() {
   state.wants = [];
   state.notifications = [];
   state.visits = [];
+  state.tagCatalog = buildTagCatalog([]);
 }
 
 function mapProfileRow(row) {
@@ -264,8 +292,9 @@ function mapProfileRow(row) {
     nickname: row.nickname || "",
     grade: row.grade || "その他",
     hometown: row.hometown || "",
-    hobbies: Array.isArray(row.hobbies) ? row.hobbies : [],
-    interests: Array.isArray(row.interests) ? row.interests : [],
+    hobbies: normalizeTagArray(row.hobbies),
+    interests: normalizeTagArray(row.interests),
+    strengths: normalizeTagArray(row.strengths),
     project: row.project || "",
     sp: row.sp || "その他",
     effort: row.effort || "",
@@ -473,8 +502,8 @@ function homeView(user) {
           ${featureButton("footprints", "足あと", countFootprints(user.id))}
         </div>
         <button class="tag-index-button" type="button" data-route="tags">
-          <span>ハッシュタグ一覧</span>
-          <strong>${countAllHashtags()}件</strong>
+          <span>タグ一覧</span>
+          <strong>${countAllTags()}件</strong>
         </button>
       </aside>
     </section>
@@ -488,7 +517,7 @@ function searchView(user) {
         <button class="icon-button" type="button" data-route="home" aria-label="戻る">戻る</button>
         <label class="search-field">
           <span>検索</span>
-          <input id="searchInput" type="search" value="${escapeAttr(state.query)}" placeholder="化学、#音楽、2年生、プロジェクト..." autocomplete="off" autofocus />
+          <input id="searchInput" type="search" value="${escapeAttr(state.query)}" placeholder="化学、音楽、2年生、プロジェクト..." autocomplete="off" autofocus />
         </label>
       </div>
       <section class="section-block search-results-block">
@@ -524,8 +553,9 @@ function editView(user) {
           <input name="gradeOther" maxlength="20" value="${gradeOptions.includes(user.grade) ? "" : escapeAttr(user.grade)}" />
         </label>
         ${textField("hometown", "出身地", user.hometown, true)}
-        ${multiSelectField("hobbies", "趣味", hobbyOptions, user.hobbies)}
-        ${multiSelectField("interests", "興味分野", interestOptions, user.interests)}
+        ${multiSelectField("hobbies", "趣味", state.tagCatalog.hobbies, user.hobbies)}
+        ${multiSelectField("interests", "興味分野", state.tagCatalog.interests, user.interests)}
+        ${multiSelectField("strengths", "得意なこと", state.tagCatalog.strengths, user.strengths || [])}
         ${textField("project", "所属プロジェクト", user.project, true)}
         <label class="field">
           <span>所属SP</span>
@@ -573,6 +603,7 @@ function profileView(user, id) {
         <div class="detail-grid">
           ${detailItem("趣味", tags(profile.hobbies))}
           ${detailItem("興味分野", tags(profile.interests))}
+          ${detailItem("得意なこと", tags(profile.strengths || []))}
           ${detailItem("所属プロジェクト", escapeHtml(profile.project))}
           ${detailItem("所属SP", escapeHtml(profile.sp))}
           ${detailItem("今頑張っていること", escapeHtml(profile.effort || "未登録"))}
@@ -637,20 +668,20 @@ function recommendationsView(user) {
 }
 
 function tagsView() {
-  const groups = collectHashtags();
+  const groups = collectTagGroups();
   return `
     <section class="page-panel">
       <div class="page-head">
         <div>
-          <p class="label">Hashtags</p>
-          <h1>ハッシュタグ一覧</h1>
+          <p class="label">Tags</p>
+          <h1>タグ一覧</h1>
         </div>
         <button class="icon-button" type="button" data-route="home">戻る</button>
       </div>
       <div class="tag-index-grid">
         ${tagGroup("趣味", groups.hobbies)}
         ${tagGroup("興味分野", groups.interests)}
-        ${projectGroup(groups.projects)}
+        ${tagGroup("得意なこと", groups.strengths)}
       </div>
     </section>
   `;
@@ -857,6 +888,7 @@ function bindProfileForm() {
 
   bindInterestPicker(form, "hobbies");
   bindInterestPicker(form, "interests");
+  bindInterestPicker(form, "strengths");
 
   form.addEventListener("submit", async (event) => {
     event.preventDefault();
@@ -884,6 +916,7 @@ function bindProfileForm() {
       hometown: formData.get("hometown").trim(),
       hobbies: collectSelectedTags(form, "hobbies"),
       interests: collectSelectedTags(form, "interests"),
+      strengths: collectSelectedTags(form, "strengths"),
       project: formData.get("project").trim(),
       sp,
       effort: formData.get("effort").trim(),
@@ -900,6 +933,18 @@ function bindProfileForm() {
     state.saving = true;
     render();
 
+    const sharedTagError = await syncSharedTagOptions({
+      hobbies: next.hobbies,
+      interests: next.interests,
+      strengths: next.strengths,
+    });
+    if (sharedTagError) {
+      state.saving = false;
+      showToast("タグ一覧を更新できませんでした");
+      render();
+      return;
+    }
+
     const { error } = await supabaseClient.from("profiles").update({
       photo_url: next.photo,
       nickname: next.nickname,
@@ -907,6 +952,7 @@ function bindProfileForm() {
       hometown: next.hometown,
       hobbies: next.hobbies,
       interests: next.interests,
+      strengths: next.strengths,
       project: next.project,
       sp: next.sp,
       effort: next.effort,
@@ -1029,7 +1075,7 @@ function searchResultsMarkup(user) {
   if (!state.query.trim()) {
     return `
       <div class="search-suggestions">
-        ${["#化学", "#音楽", "#起業", "2年生", "教育", "プロジェクト"].map((term) => `<button type="button" data-suggest="${escapeAttr(term)}">${escapeHtml(term)}</button>`).join("")}
+        ${["化学", "音楽", "起業", "2年生", "教育", "プロジェクト"].map((term) => `<button type="button" data-suggest="${escapeAttr(term)}">${escapeHtml(term)}</button>`).join("")}
       </div>
       ${emptyState("検索したい言葉を入力してください")}
     `;
@@ -1094,6 +1140,25 @@ function normalizeTagForCompare(tag) {
   return String(tag || "").trim().replace(/^#/, "").toLowerCase();
 }
 
+async function syncSharedTagOptions(tagGroups) {
+  const rows = Object.entries(tagGroups).flatMap(([category, items]) =>
+    normalizeTagArray(items).map((label) => ({ category, label }))
+  );
+
+  if (!rows.length) return null;
+
+  const { error } = await supabaseClient
+    .from("tag_options")
+    .upsert(rows, { onConflict: "category,label", ignoreDuplicates: true });
+
+  if (error && error.code !== "42P01") {
+    console.error(error);
+    return error;
+  }
+
+  return null;
+}
+
 function createProfile(email) {
   const nickname = email.split("@")[0];
   return {
@@ -1105,6 +1170,7 @@ function createProfile(email) {
     hometown: "",
     hobbies: [],
     interests: [],
+    strengths: [],
     project: "",
     sp: "その他",
     effort: "",
@@ -1130,8 +1196,23 @@ function isProfileComplete(profile) {
 function normalizeTags(value) {
   return String(value)
     .split(/[\s,、]+/)
-    .map((tag) => tag.trim().replace(/^#?/, "#"))
-    .filter((tag) => tag.length > 1);
+    .map(normalizeSingleTag)
+    .filter(Boolean);
+}
+
+function normalizeSingleTag(tag) {
+  const normalized = String(tag || "").trim().replace(/^#/, "");
+  return normalized ? `#${normalized}` : "";
+}
+
+function normalizeTagArray(value) {
+  return Array.isArray(value)
+    ? Array.from(new Set(value.map(normalizeSingleTag).filter(Boolean)))
+    : [];
+}
+
+function displayTag(tag) {
+  return String(tag || "").replace(/^#/, "");
 }
 
 function collectSelectedTags(form, name) {
@@ -1139,7 +1220,7 @@ function collectSelectedTags(form, name) {
     form.querySelectorAll(`[data-interest-option="${name}"].selected`),
     (button) => button.dataset.value
   );
-  const custom = normalizeTags(form.elements[`${name}Custom`]?.value || "");
+  const custom = parseStoredCustomTags(form.elements[`${name}Added`]?.value || "[]");
   return Array.from(new Set([...selected, ...custom]));
 }
 
@@ -1147,12 +1228,29 @@ function bindInterestPicker(form, name) {
   const buttons = form.querySelectorAll(`[data-interest-option="${name}"]`);
   const selectedRoot = form.querySelector(`[data-selected-tags="${name}"]`);
   const customInput = form.elements[`${name}Custom`];
+  const hiddenInput = form.elements[`${name}Added`];
+  const addButton = form.querySelector(`[data-add-custom="${name}"]`);
+  let customTags = parseStoredCustomTags(hiddenInput?.value || "[]");
 
   const renderSelected = () => {
+    hiddenInput.value = JSON.stringify(customTags);
     const values = collectSelectedTags(form, name);
     selectedRoot.innerHTML = values.length
-      ? values.map((value) => `<span>${escapeHtml(value)}</span>`).join("")
+      ? values
+          .map((value) =>
+            customTags.includes(value)
+              ? `<button class="picker-added-tag" type="button" data-remove-custom="${name}" data-value="${escapeAttr(value)}">${escapeHtml(displayTag(value))}</button>`
+              : `<span>${escapeHtml(displayTag(value))}</span>`
+          )
+          .join("")
       : `<p class="picker-empty">まだ選択されていません</p>`;
+
+    selectedRoot.querySelectorAll(`[data-remove-custom="${name}"]`).forEach((button) => {
+      button.addEventListener("click", () => {
+        customTags = customTags.filter((tag) => tag !== button.dataset.value);
+        renderSelected();
+      });
+    });
   };
 
   buttons.forEach((button) => {
@@ -1162,41 +1260,83 @@ function bindInterestPicker(form, name) {
     });
   });
 
-  customInput?.addEventListener("input", renderSelected);
+  addButton?.addEventListener("click", () => {
+    const raw = String(customInput?.value || "").trim();
+    if (!raw) return;
+    const tag = normalizeSingleTag(raw);
+    customTags = Array.from(new Set([...customTags, tag]));
+    customInput.value = "";
+    renderSelected();
+  });
+
   renderSelected();
 }
 
-function extractHashtags(value) {
-  return Array.from(String(value || "").matchAll(/#[^\s#、,，。]+/g), (match) => match[0]);
+function parseStoredCustomTags(value) {
+  try {
+    const parsed = JSON.parse(value);
+    return normalizeTagArray(parsed);
+  } catch {
+    return [];
+  }
 }
 
-function collectHashtags() {
-  return state.profiles.reduce(
-    (groups, profile) => {
-      addTags(groups.hobbies, profile.hobbies);
-      addTags(groups.interests, profile.interests);
-      addProject(groups.projects, profile.project);
-      return groups;
-    },
-    { hobbies: new Map(), interests: new Map(), projects: new Map() }
+function extractHashtags(value) {
+  return Array.from(String(value || "").matchAll(/#[^\s#、,，。]+/g), (match) => normalizeSingleTag(match[0]));
+}
+
+function buildTagCatalog(rows) {
+  return {
+    hobbies: mergeTagOptions(hobbyOptions, rows.filter((row) => row.category === "hobbies").map((row) => row.label)),
+    interests: mergeTagOptions(interestOptions, rows.filter((row) => row.category === "interests").map((row) => row.label)),
+    strengths: mergeTagOptions(strengthOptions, rows.filter((row) => row.category === "strengths").map((row) => row.label)),
+  };
+}
+
+function mergeTagOptions(defaults, extras) {
+  return Array.from(new Set([...defaults, ...extras].map(normalizeSingleTag).filter(Boolean))).sort((a, b) =>
+    displayTag(a).localeCompare(displayTag(b), "ja")
   );
+}
+
+function collectTagGroups() {
+  const groups = {
+    hobbies: seedTagMap(state.tagCatalog.hobbies),
+    interests: seedTagMap(state.tagCatalog.interests),
+    strengths: seedTagMap(state.tagCatalog.strengths),
+  };
+
+  state.profiles.forEach((profile) => {
+    addTags(groups.hobbies, profile.hobbies);
+    addTags(groups.interests, profile.interests);
+    addTags(groups.strengths, profile.strengths || []);
+  });
+
+  return groups;
 }
 
 function addTags(map, tagsToAdd) {
   tagsToAdd.forEach((tag) => {
-    map.set(tag, (map.get(tag) || 0) + 1);
+    const normalized = normalizeSingleTag(tag);
+    if (!normalized) return;
+    map.set(normalized, (map.get(normalized) || 0) + 1);
   });
 }
 
-function addProject(map, project) {
-  const normalized = String(project || "").trim();
-  if (!normalized) return;
-  map.set(normalized, (map.get(normalized) || 0) + 1);
+function seedTagMap(items) {
+  const map = new Map();
+  items.forEach((item) => {
+    const normalized = normalizeSingleTag(item);
+    if (normalized && !map.has(normalized)) {
+      map.set(normalized, 0);
+    }
+  });
+  return map;
 }
 
-function countAllHashtags() {
-  const groups = collectHashtags();
-  return new Set([...groups.hobbies.keys(), ...groups.interests.keys()]).size + groups.projects.size;
+function countAllTags() {
+  const groups = collectTagGroups();
+  return new Set([...groups.hobbies.keys(), ...groups.interests.keys(), ...groups.strengths.keys()]).size;
 }
 
 function tagGroup(title, tagsMap) {
@@ -1211,30 +1351,9 @@ function tagGroup(title, tagsMap) {
         ${
           items.length
             ? items
-                .map(([tag, count]) => `<button type="button" data-tag-search="${escapeAttr(tag)}"><span>${escapeHtml(tag)}</span><small>${count}</small></button>`)
+                .map(([tag, count]) => `<button type="button" data-tag-search="${escapeAttr(displayTag(tag))}"><span>${escapeHtml(displayTag(tag))}</span><small>${count}</small></button>`)
                 .join("")
-            : emptyState("登録されたハッシュタグがありません")
-        }
-      </div>
-    </section>
-  `;
-}
-
-function projectGroup(projectsMap) {
-  const items = Array.from(projectsMap.entries()).sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0], "ja"));
-  return `
-    <section class="tag-index-section project-index-section">
-      <div class="section-head">
-        <h2>所属プロジェクト</h2>
-        <span>${items.length}件</span>
-      </div>
-      <div class="project-index-list">
-        ${
-          items.length
-            ? items
-                .map(([project, count]) => `<button type="button" data-tag-search="${escapeAttr(project)}"><span>${escapeHtml(project)}</span><small>${count}</small></button>`)
-                .join("")
-            : emptyState("登録されたプロジェクトがありません")
+            : emptyState("登録されたタグがありません")
         }
       </div>
     </section>
@@ -1278,7 +1397,7 @@ function recommendedPersonRow(profile, userId, matchedTags) {
       <span>
         <strong>${escapeHtml(profile.nickname)}</strong>
         <small>${escapeHtml(profile.grade)} / 一致 ${matchedTags.length}件</small>
-        <span class="matched-tags">${matchedTags.map((tag) => `<b>${escapeHtml(tag)}</b>`).join("")}</span>
+        <span class="matched-tags">${matchedTags.map((tag) => `<b>${escapeHtml(displayTag(tag))}</b>`).join("")}</span>
       </span>
       ${matched ? `<em>マッチ</em>` : ""}
     </button>
@@ -1300,7 +1419,7 @@ function avatar(profile) {
 }
 
 function tags(items) {
-  return `<div class="tag-list">${items.map((item) => `<span>${escapeHtml(item)}</span>`).join("")}</div>`;
+  return `<div class="tag-list">${items.map((item) => `<span>${escapeHtml(displayTag(item))}</span>`).join("")}</div>`;
 }
 
 function detailItem(label, value) {
@@ -1345,7 +1464,7 @@ function imageUploadField(user) {
 function multiSelectField(name, label, options, selectedValues) {
   const selected = new Set(selectedValues);
   const preset = options.filter((option) => selected.has(option));
-  const custom = selectedValues.filter((value) => !options.includes(value)).join(" ");
+  const custom = selectedValues.filter((value) => !options.includes(value));
 
   return `
     <section class="field span-2 picker-field">
@@ -1354,7 +1473,7 @@ function multiSelectField(name, label, options, selectedValues) {
         <div class="picker-selected" data-selected-tags="${name}">
           ${
             preset.length
-              ? preset.map((value) => `<span>${escapeHtml(value)}</span>`).join("")
+              ? preset.map((value) => `<span>${escapeHtml(displayTag(value))}</span>`).join("")
               : `<p class="picker-empty">まだ選択されていません</p>`
           }
         </div>
@@ -1368,19 +1487,21 @@ function multiSelectField(name, label, options, selectedValues) {
                   data-interest-option="${name}"
                   data-value="${escapeAttr(option)}"
                 >
-                  ${escapeHtml(option)}
+                  ${escapeHtml(displayTag(option))}
                 </button>
               `
             )
             .join("")}
         </div>
         <label class="field picker-custom">
-          <span>自由記述（任意）</span>
+          <span>タグを追加（任意）</span>
           <input
             name="${name}Custom"
-            value="${escapeAttr(custom)}"
-            placeholder="例: #盆栽 #天文学"
+            value=""
+            placeholder="例: 盆栽"
           />
+          <input type="hidden" name="${name}Added" value="${escapeAttr(JSON.stringify(custom))}" />
+          <button class="picker-add-button" type="button" data-add-custom="${name}">タグを追加</button>
         </label>
       </div>
     </section>

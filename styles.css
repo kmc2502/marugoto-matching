@@ -788,6 +788,26 @@ p {
   gap: 6px;
 }
 
+.picker-add-button,
+.picker-added-tag {
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 9px 12px;
+  background: white;
+  color: var(--green-deep);
+  font-weight: 700;
+}
+
+.picker-add-button {
+  justify-self: start;
+  background: var(--green-light);
+}
+
+.picker-added-tag {
+  background: #fff7e8;
+  border-color: rgba(214, 146, 52, 0.25);
+}
+
 .image-upload {
   display: flex;
   align-items: center;
