@@ -123,6 +123,10 @@ const state = {
     interests: [],
     strengths: [],
   },
+  schemaSupport: {
+    strengths: true,
+    tagOptions: true,
+  },
   route: { name: "home" },
   authScreen: "login",
   query: "",
@@ -220,6 +224,7 @@ async function ensureProfile(authUser) {
 
   let { error } = await supabaseClient.from("profiles").upsert(baseProfile, { onConflict: "id" });
   if (error && isMissingSchemaFeatureError(error, "strengths")) {
+    state.schemaSupport.strengths = false;
     const { strengths, ...legacyProfile } = baseProfile;
     ({ error } = await supabaseClient.from("profiles").upsert(legacyProfile, { onConflict: "id" }));
   }
@@ -248,6 +253,9 @@ async function loadAppData() {
 
   if (tagOptionsResult.error) {
     console.warn("tag_options load skipped", tagOptionsResult.error);
+    state.schemaSupport.tagOptions = false;
+  } else {
+    state.schemaSupport.tagOptions = true;
   }
 
   const errors = [
@@ -289,6 +297,7 @@ function clearAppData() {
   state.notifications = [];
   state.visits = [];
   state.tagCatalog = buildTagCatalog([]);
+  state.schemaSupport = { strengths: true, tagOptions: true };
 }
 
 function mapProfileRow(row) {
@@ -563,7 +572,17 @@ function editView(user) {
         ${textField("hometown", "出身地", user.hometown, true)}
         ${multiSelectField("hobbies", "趣味", state.tagCatalog.hobbies, user.hobbies)}
         ${multiSelectField("interests", "興味分野", state.tagCatalog.interests, user.interests)}
-        ${multiSelectField("strengths", "得意なこと", state.tagCatalog.strengths, user.strengths || [])}
+        ${multiSelectField(
+          "strengths",
+          "得意なこと",
+          state.tagCatalog.strengths,
+          user.strengths || [],
+          !state.schemaSupport.strengths
+            ? "Supabase の schema 更新後に保存されます。"
+            : !state.schemaSupport.tagOptions
+              ? "タグ一覧への共有は schema 更新後に反映されます。"
+              : ""
+        )}
         ${textField("project", "所属プロジェクト", user.project, true)}
         <label class="field">
           <span>所属SP</span>
@@ -941,19 +960,20 @@ function bindProfileForm() {
     state.saving = true;
     render();
 
-    const sharedTagError = await syncSharedTagOptions({
+    const sharedTagResult = await syncSharedTagOptions({
       hobbies: next.hobbies,
       interests: next.interests,
       strengths: next.strengths,
     });
-    if (sharedTagError) {
+    if (sharedTagResult.error) {
       state.saving = false;
       showToast("タグ一覧を更新できませんでした");
       render();
       return;
     }
 
-    const { error } = await updateProfileRecord(user.id, next);
+    const profileResult = await updateProfileRecord(user.id, next);
+    const { error } = profileResult;
 
     state.saving = false;
 
@@ -965,7 +985,14 @@ function bindProfileForm() {
     }
 
     await loadAppData();
-    showToast("プロフィールを保存しました");
+    const notices = [];
+    if (profileResult.strengthsSkipped) {
+      notices.push("得意なことは schema 更新後に保存されます");
+    }
+    if (sharedTagResult.sharedTagSkipped) {
+      notices.push("タグ一覧への共有は schema 更新後に反映されます");
+    }
+    showToast(notices.length ? notices.join(" / ") : "プロフィールを保存しました");
     state.route = { name: "home" };
     render();
   });
@@ -1138,7 +1165,7 @@ async function syncSharedTagOptions(tagGroups) {
     normalizeTagArray(items).map((label) => ({ category, label }))
   );
 
-  if (!rows.length) return null;
+  if (!rows.length) return { error: null, sharedTagSkipped: false };
 
   const { error } = await supabaseClient
     .from("tag_options")
@@ -1146,10 +1173,16 @@ async function syncSharedTagOptions(tagGroups) {
 
   if (error && !isMissingSchemaFeatureError(error, "tag_options")) {
     console.error(error);
-    return error;
+    return { error, sharedTagSkipped: false };
   }
 
-  return null;
+  if (error) {
+    state.schemaSupport.tagOptions = false;
+    return { error: null, sharedTagSkipped: true };
+  }
+
+  state.schemaSupport.tagOptions = true;
+  return { error: null, sharedTagSkipped: false };
 }
 
 async function updateProfileRecord(userId, next) {
@@ -1171,12 +1204,17 @@ async function updateProfileRecord(userId, next) {
   };
 
   let result = await supabaseClient.from("profiles").update(payload).eq("id", userId);
+  let strengthsSkipped = false;
   if (result.error && isMissingSchemaFeatureError(result.error, "strengths")) {
+    strengthsSkipped = true;
+    state.schemaSupport.strengths = false;
     const { strengths, ...legacyPayload } = payload;
     result = await supabaseClient.from("profiles").update(legacyPayload).eq("id", userId);
+  } else if (!result.error) {
+    state.schemaSupport.strengths = true;
   }
 
-  return result;
+  return { ...result, strengthsSkipped };
 }
 
 function isMissingSchemaFeatureError(error, featureName) {
@@ -1486,7 +1524,7 @@ function imageUploadField(user) {
   `;
 }
 
-function multiSelectField(name, label, options, selectedValues) {
+function multiSelectField(name, label, options, selectedValues, hintText = "") {
   const selected = new Set(selectedValues);
   const preset = options.filter((option) => selected.has(option));
   const custom = selectedValues.filter((value) => !options.includes(value));
@@ -1528,6 +1566,7 @@ function multiSelectField(name, label, options, selectedValues) {
           <input type="hidden" name="${name}Added" value="${escapeAttr(JSON.stringify(custom))}" />
           <button class="picker-add-button" type="button" data-add-custom="${name}">タグを追加</button>
         </label>
+        ${hintText ? `<p class="picker-hint">${escapeHtml(hintText)}</p>` : ""}
       </div>
     </section>
   `;
