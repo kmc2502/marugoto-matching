@@ -746,6 +746,25 @@ p {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 10px;
+  max-height: 280px;
+  overflow-y: auto;
+  padding-right: 6px;
+  align-content: start;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(25, 113, 66, 0.4) transparent;
+}
+
+.picker-options::-webkit-scrollbar {
+  width: 8px;
+}
+
+.picker-options::-webkit-scrollbar-thumb {
+  background: rgba(25, 113, 66, 0.35);
+  border-radius: 999px;
+}
+
+.picker-options::-webkit-scrollbar-track {
+  background: transparent;
 }
 
 .picker-option {
