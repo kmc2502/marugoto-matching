@@ -471,6 +471,35 @@ function homeView(user) {
     .filter((notification) => notification.to === user.id && !notification.read)
     .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
 
+  const homeTools = `
+    <section class="home-tools">
+      <button class="profile-card" type="button" data-route="edit">
+        ${avatar(user)}
+        <span>
+          <strong>${escapeHtml(user.nickname)}</strong>
+          <small>${escapeHtml(user.grade)}</small>
+        </span>
+      </button>
+      <button class="recommend-button" type="button" data-list="recommendations">
+        <span>
+          <strong>おすすめの人物</strong>
+          <small>趣味・興味分野が近い人</small>
+        </span>
+        <em>${getRecommendedProfiles(user).length}</em>
+      </button>
+      <div class="feature-grid">
+        ${featureButton("wantsMe", "あなたと話したい人", countWantsMe(user.id))}
+        ${featureButton("myWants", "自分の話したい人リスト", countMyWants(user.id))}
+        ${featureButton("history", "閲覧履歴", countHistory(user.id))}
+        ${featureButton("footprints", "足あと", countFootprints(user.id))}
+      </div>
+      <button class="tag-index-button" type="button" data-route="tags">
+        <span>タグ一覧</span>
+        <strong>${countAllTags()}件</strong>
+      </button>
+    </section>
+  `;
+
   return `
     <section class="home-grid">
       <div class="home-main">
@@ -478,6 +507,7 @@ function homeView(user) {
           <span>検索</span>
           <strong>${state.query.trim() ? escapeHtml(state.query) : "学生、興味、プロジェクトを検索"}</strong>
         </button>
+        ${homeTools}
         ${
           notifications.length
             ? `<section class="notice-list">
@@ -487,32 +517,7 @@ function homeView(user) {
             : ""
         }
       </div>
-      <aside class="home-side">
-        <button class="profile-card" type="button" data-route="edit">
-          ${avatar(user)}
-          <span>
-            <strong>${escapeHtml(user.nickname)}</strong>
-            <small>${escapeHtml(user.grade)}</small>
-          </span>
-        </button>
-        <button class="recommend-button" type="button" data-list="recommendations">
-          <span>
-            <strong>おすすめの人物</strong>
-            <small>趣味・興味分野が近い人</small>
-          </span>
-          <em>${getRecommendedProfiles(user).length}</em>
-        </button>
-        <div class="feature-grid">
-          ${featureButton("wantsMe", "あなたと話したい人", countWantsMe(user.id))}
-          ${featureButton("myWants", "自分の話したい人リスト", countMyWants(user.id))}
-          ${featureButton("history", "閲覧履歴", countHistory(user.id))}
-          ${featureButton("footprints", "足あと", countFootprints(user.id))}
-        </div>
-        <button class="tag-index-button" type="button" data-route="tags">
-          <span>タグ一覧</span>
-          <strong>${countAllTags()}件</strong>
-        </button>
-      </aside>
+      <aside class="home-side"></aside>
     </section>
   `;
 }

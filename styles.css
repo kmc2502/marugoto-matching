@@ -337,9 +337,14 @@ p {
 
 .home-main,
 .home-side,
+.home-tools,
 .page-panel {
   display: grid;
   gap: 16px;
+}
+
+.home-tools {
+  grid-template-columns: minmax(0, 1fr);
 }
 
 .search-box,
@@ -500,6 +505,10 @@ p {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 10px;
+}
+
+.home-side {
+  display: none;
 }
 
 .feature-button {
@@ -913,6 +922,7 @@ p {
 @media (max-width: 820px) {
   .login-screen,
   .home-grid,
+  .home-tools,
   .profile-form,
   .detail-grid {
     grid-template-columns: 1fr;
