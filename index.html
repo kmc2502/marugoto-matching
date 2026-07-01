@@ -2,30 +2,39 @@
 <html lang="ja">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>まるごとマッチング</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <title>夜道明るさ記録マップ</title>
     <meta
       name="description"
-      content="神山まるごと高専の学生同士をつなぐコミュニケーションアプリ。"
+      content="スマートフォンのカメラ画像と位置情報で夜道の明るさを記録し、地図上に5段階で表示するWebアプリ。"
     />
-    <meta property="og:title" content="まるごとマッチング" />
-    <meta
-      property="og:description"
-      content="興味、プロジェクト、頑張っていることから学生同士がつながるWebアプリ。"
-    />
-    <meta property="og:type" content="website" />
+    <meta name="theme-color" content="#101923" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-title" content="夜道明るさ" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <link rel="manifest" href="./manifest.webmanifest" />
+    <link rel="apple-touch-icon" href="./icons/apple-touch-icon.png" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
       href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;500;700;800&display=swap"
       rel="stylesheet"
     />
+    <link
+      rel="stylesheet"
+      href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+      integrity="sha256-p4NxAoJBhIINfQdhlS6CjM9M9r4C4+Z0tfsW4HfUz0="
+      crossorigin=""
+    />
     <link rel="stylesheet" href="./styles.css" />
   </head>
   <body>
     <div id="app"></div>
-    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-    <script src="./supabase-config.js"></script>
+    <script
+      src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+      integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo="
+      crossorigin=""
+    ></script>
     <script type="module" src="./app.js"></script>
   </body>
 </html>
