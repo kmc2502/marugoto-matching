@@ -1,59 +1,39 @@
-# 夜道明るさ記録マップ
+# まるごとマッチング
 
-iPhoneなどのスマートフォンブラウザで、カメラ画像から推定した夜道の明るさと位置情報を記録するWebアプリです。記録した地点は5段階の色で地図に表示でき、CSVとして出力できます。
+神山まるごと高専の学生同士をつなぐコミュニケーションアプリです。Supabase Auth と Supabase Database を前提にしています。
 
 ## 実装内容
 
-- カメラプレビューから `0.299R + 0.587G + 0.114B` で平均明るさを算出
-- 明るさを5段階に分類
-- 位置情報、精度、取得時刻を記録
-- 記録間隔を1秒、2秒、3秒から選択
-- 記録履歴を端末の `localStorage` に保存
-- Leaflet と OpenStreetMap による地図表示
-- 地点タップ時の詳細表示
-- CSV出力
-- 利用可能なブラウザでは `AmbientLightSensor` の値も保存
-- iPhone向けのPWA設定、ホーム画面アイコン、HTTPSチェック
-- GitHub Pagesへの自動公開ワークフロー
+- `ログイン` と `新規登録` を分けた認証画面
+- `@kamiyama.ac.jp` を含むメールアドレスとパスワードでログインできる画面
+- ホーム検索、通知一覧、自分のプロフィール、2x2機能アイコン
+- プロフィール閲覧と本人のみ編集
+- 学年・所属SPの「その他」自由記述
+- 趣味・興味分野の複数選択式登録と検索
+- 得意なことの複数選択式登録
+- 趣味・興味分野・得意なことのタグ一覧
+- 話したい人登録、解除、相互登録時のマッチ表示
+- 趣味・興味分野の一致数で並ぶおすすめ人物リスト
+- あなたと話したい人、自分の話したい人リスト
+- 閲覧履歴、足あと最新20件
+- GitHub Pagesでそのまま公開できる静的構成
+- Supabase の `profiles / want_links / notifications / profile_visits / tag_options` テーブル利用
 
-## iPhoneで使う方法
+## 使い方
 
-iPhoneでカメラと位置情報を使うには、アプリをHTTPSのURLで開く必要があります。GitHub Pagesで公開するとSafariからそのまま利用できます。
+ブラウザで `index.html` を開きます。
 
-1. このリポジトリをGitHubへpushします。
-2. GitHubのリポジトリ画面で `Settings` → `Pages` を開きます。
-3. `Build and deployment` の `Source` を `GitHub Actions` にします。
-4. `Actions` の `Deploy to GitHub Pages` が成功するまで待ちます。
-5. 表示されたPages URLをiPhone Safariで開きます。
-6. `記録開始` を押し、カメラと位置情報を許可します。
+1. [supabase-schema.sql](/Users/aokichizuru/Documents/New%20project/supabase-schema.sql) を Supabase SQL Editor で実行します。
+2. [supabase-config.js](/Users/aokichizuru/Documents/New%20project/supabase-config.js) に `url` と `anonKey` を入れます。
+3. Supabase Auth でメールアドレス / パスワード認証を有効にします。
+4. Supabase Auth の `Confirm email` は OFF を推奨します。ON だと新規登録直後にそのままログインできません。
+5. 新規登録画面で `@kamiyama.ac.jp` を含むメールアドレスとパスワードを登録します。
+6. ログイン画面で同じ情報を使ってログインします。
 
-このリポジトリ名のまま公開する場合、URLは次の形式になります。
+## 補足
 
-```text
-https://kmc2502.github.io/marugoto-matching/
-```
-
-Safariで開いたあと、共有ボタンから `ホーム画面に追加` を選ぶとアプリのように起動できます。
-
-## 開発中の確認
-
-PCのブラウザで見た目を確認する場合は、以下のローカルサーバーを使えます。
-
-```bash
-python3 -m http.server 4173
-```
-
-その後、ブラウザで `http://127.0.0.1:4173/` を開きます。
-
-同じWi-Fi内のiPhoneから `http://PCのIPアドレス:4173/` を開いても、iPhone Safariではカメラが使えない場合があります。実機で記録する最終確認はHTTPSの公開URLで行ってください。
-
-## CSV形式
-
-```csv
-time,latitude,longitude,accuracy,brightness,level,light_sensor
-2026-07-01 20:15:03,34.000000,134.000000,8,52,2,
-```
-
-## 注意
-
-このアプリの明るさはluxではなく、カメラ画像から求めた相対的な値です。スマートフォンの自動露出や撮影方向の影響を受けるため、同じ端末、同じ向き、同じ時間帯で記録すると比較しやすくなります。
+- フロントのログイン制限はメールアドレス文字列に `@kamiyama.ac.jp` が含まれているかで判定しています。
+- DB 側でも `profiles.email` に同じドメイン制約を入れています。
+- アイコン画像は現状 Base64 文字列として `profiles.photo_url` に保存しています。運用時は Supabase Storage へ移すと安定します。
+- 趣味・興味分野・得意なことは候補から複数選択し、必要なら入力して `タグを追加` で独自タグを加えられます。
+- 追加したタグは `tag_options` に保存され、他のユーザーの設定画面にも候補として表示されます。
